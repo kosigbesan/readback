@@ -55,6 +55,18 @@ function ok(label, cond, detail) {
   ok("pdf worker points at a local file", /vendor\/pdf\.worker\.min\.js$/.test(globals.worker || ""), globals.worker);
   notes.push("speechSynthesis in headless: " + globals.speech);
 
+  /* ---------- what a personal user gets on first open ---------- */
+  const personal = await page.evaluate(() => ({
+    mode: window.__rb.state.settings.mode,
+    pillHidden: getComputedStyle(document.querySelector("#planPill")).display === "none",
+    usage: document.querySelector("#usageLine").textContent.trim(),
+    upgradeReachable: !!document.querySelector("#planPill").offsetParent
+  }));
+  ok("defaults to personal mode, not selling", personal.mode === "personal", String(personal.mode));
+  ok("no plan pill is shown", personal.pillHidden === true, JSON.stringify(personal));
+  ok("no listening meter is shown", personal.usage === "", JSON.stringify(personal.usage));
+  ok("nothing to press to reach a paywall", personal.upgradeReachable === false, JSON.stringify(personal));
+
   /* ---------- 2. sentence splitting ---------- */
   const split = await page.evaluate(() => {
     const cases = {
@@ -162,6 +174,14 @@ function ok(label, cond, detail) {
   ok("play set the playing flag", playing.playing === true, JSON.stringify(playing));
   ok("play highlighted exactly one sentence", playing.highlighted === 1, String(playing.highlighted));
 
+  /* ---------- the silent track that keeps the car session alive ---------- */
+  const kaOn = await page.evaluate(() => window.__rb.keepAliveRunning());
+  ok("a silent track runs while playing, to hold the car session", kaOn === true, String(kaOn));
+  await page.evaluate(() => document.querySelector("#playBtn").click());
+  await new Promise((r) => setTimeout(r, 400));
+  const kaOff = await page.evaluate(() => window.__rb.keepAliveRunning());
+  ok("and stops when paused", kaOff === false, String(kaOff));
+
   /* ---------- 7. seek, section tracking, driving mode ---------- */
   const seekRes = await page.evaluate(() => {
     const n = window.__rb.state.doc.sentences.length;
@@ -231,9 +251,10 @@ function ok(label, cond, detail) {
   await page.screenshot({ path: path.join(SHOTS, "4-outline.png") });
   await page.evaluate(() => document.querySelector("#scrim").click());
 
-  /* ---------- 9. freemium gate ---------- */
+  /* ---------- 9. the freemium gate, with selling switched on ---------- */
   await page.evaluate(() => document.querySelector("#backBtn").click());
   await new Promise((r) => setTimeout(r, 400));
+  await page.evaluate(() => window.__rb.setMode("sell"));
   await page.evaluate(() => {
     const buf = new TextEncoder().encode("Another document entirely. It has plenty of words so it counts. ".repeat(28));
     const f = new File([buf], "second-job-spec.txt");
@@ -271,6 +292,40 @@ function ok(label, cond, detail) {
   }));
   ok("activating a plan sets pro", pro.pro === true);
   ok("plan pill updates", /Pro/.test(pro.pill) && /pro/.test(pro.pillClass), pro.pill + " / " + pro.pillClass);
+
+  /* ---------- 11. back to personal mode, through the real switch ---------- */
+  const beforeCount = await page.evaluate(() => {
+    document.querySelector("#scrim").click();
+    return document.querySelectorAll("#lib .lib").length;
+  });
+  await page.evaluate(() => document.querySelector("#swSell").click());
+  await new Promise((r) => setTimeout(r, 300));
+  const switched = await page.evaluate(() => ({
+    mode: window.__rb.state.settings.mode,
+    pillHidden: getComputedStyle(document.querySelector("#planPill")).display === "none",
+    usage: document.querySelector("#usageLine").textContent.trim()
+  }));
+  ok("the switch turns selling off", switched.mode === "personal", JSON.stringify(switched));
+  ok("and the plan pill disappears", switched.pillHidden === true, JSON.stringify(switched));
+  ok("and the listening meter disappears", switched.usage === "", JSON.stringify(switched.usage));
+
+  await page.evaluate(() => {
+    const buf = new TextEncoder().encode(("A third document. It has plenty of words to listen to. ").repeat(22));
+    const f = new File([buf], "third-notes.txt");
+    const inp = document.querySelector("#file");
+    const dt = new DataTransfer();
+    dt.items.add(f);
+    inp.files = dt.files;
+    inp.dispatchEvent(new Event("change"));
+  });
+  await new Promise((r) => setTimeout(r, 3000));
+  const open = await page.evaluate(() => ({
+    upgradeShown: document.querySelector("#sheetUpgrade").classList.contains("show"),
+    documents: document.querySelectorAll("#lib .lib").length
+  }));
+  ok("personal mode adds a document without a wall",
+     open.upgradeShown === false && open.documents > beforeCount, beforeCount + " -> " + JSON.stringify(open));
+  ok("and never shows the upgrade sheet", open.upgradeShown === false, JSON.stringify(open));
 
   /* ---------- summary ---------- */
   console.log("\n---------- notes ----------");

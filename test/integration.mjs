@@ -149,6 +149,8 @@ await page.waitForFunction("window.__rb && window.__rb.refreshLicence", { timeou
 
 console.log("\n--- phase 1: the app with no service connected ---");
 {
+  // this half of the test is about selling, so say so explicitly
+  await page.evaluate(() => window.__rb.setMode("sell"));
   const st = await page.evaluate(() => ({
     source: window.__rb.state.licenceSource,
     pro: window.__rb.state.pro,
@@ -182,6 +184,7 @@ await page.goto(APP, { waitUntil: "networkidle2" });
 await page.waitForFunction("window.__rb && window.__rb.refreshLicence", { timeout: 20000 });
 
 const deviceId = await page.evaluate((base) => {
+  window.__rb.setMode("sell");
   window.__rb.state.settings.apiBase = base;
   localStorage.setItem("rb_settings", JSON.stringify(window.__rb.state.settings));
   return window.__rb.deviceId();
@@ -315,6 +318,7 @@ console.log("\n--- checkout: a real redirect, and an honest failure ---");
     req.continue();
   });
   await page.evaluate(async (base) => {
+    window.__rb.setMode("sell");
     window.__rb.state.settings.apiBase = base;
     localStorage.setItem("rb_settings", JSON.stringify(window.__rb.state.settings));
     await window.__rb.purchase("pro");

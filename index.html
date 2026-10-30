@@ -455,6 +455,17 @@ select:focus,input:focus{outline:none;border-color:rgba(232,163,61,.5)}
     </select>
   </div>
 
+  <div style="border-top:1px solid var(--line2);margin-top:22px;padding-top:6px">
+    <h2 style="font-size:17px;margin-bottom:10px">This app</h2>
+    <div class="switchrow" style="border-bottom:0">
+      <div class="lbl"><b>Sell this app</b><span>Off is personal use: unlimited documents, unlimited
+        listening, no upgrade prompts, device voices free forever. On shows the plans and enforces
+        the free tier.</span></div>
+      <div class="sw" id="swSell"><i></i></div>
+    </div>
+    <p class="note" id="modeNote"></p>
+  </div>
+
   <div style="border-top:1px solid var(--line2);margin-top:22px;padding-top:18px">
     <h2 style="font-size:17px">ReadBack service</h2>
     <p class="shsub" style="margin-bottom:12px">Connect the service to take payments and to
@@ -514,6 +525,10 @@ if(window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdf.worker
 const DEFAULT_SETTINGS = {
   rate: 1, voiceURI: "", driving: false, qaPause: true, loop: false,
   keepAwake: true, showText: true, thinkMs: 5000,
+  // "personal" means no limits and no upgrade prompts at all. "sell" turns on
+  // the plans, the free tier and the metering. Personal is the default because
+  // the walls only make sense once there is something to sell.
+  mode: "personal",
   engine: "browser", apiBase: "", elKey: "", elVoice: ""
 };
 const FREE_LIMITS = { docs: 1, minutes: 10 };
@@ -1087,37 +1102,49 @@ function buildDoc(id, name, ext, blocks){
            words: sentences.reduce((n, s) => n + s.t.split(/\s+/).length, 0) };
 }
 
-/* ================= usage / limits ================= */
+/* ================= usage / limits =================
+   Every limit below is gated on sell mode. For personal use there are none. */
+const selling = () => S.settings.mode === "sell";
+
 function minutesUsed(){ return S.usage.minutes || 0; }
 function isPro(){ return !!S.pro; }
 function docCount(){ return S.usage.docs || 0; }
-function limitHit(){ return !isPro() && docCount() >= FREE_LIMITS.docs; }
+function limitHit(){ return selling() && !isPro() && docCount() >= FREE_LIMITS.docs; }
 function minutesLeft(){ return Math.max(0, FREE_LIMITS.minutes - minutesUsed()); }
 
 function addMinutes(mins){
-  if(isPro()) return;
+  if(!selling() || isPro()) return;
   S.usage.minutes = Math.round((minutesUsed() + mins) * 100) / 100;
   save("rb_usage", S.usage);
   paintUsage();
-  if(minutesUsed() >= FREE_LIMITS.minutes && S.doc) {
-    // let the current sentence finish, then stop and offer upgrade
-  }
 }
 function paintUsage(){
   const line = $("#usageLine");
+  if(!selling()){ line.textContent = ""; return; }
   if(isPro()){ line.textContent = S.L && S.L.plan === "sprint" ? "Sprint pass" : "Pro"; return; }
   line.textContent = minutesLeft().toFixed(0) + " of " + FREE_LIMITS.minutes + " min left";
 }
 function paintPlan(){
   const p = $("#planPill");
+  // in personal mode there is nothing to sell, so the pill is not shown at all
+  p.style.display = selling() ? "" : "none";
   const sprint = !!(S.L && S.L.plan === "sprint");
   p.textContent = isPro() ? (sprint ? "Sprint" : "Pro") : "Free";
   p.classList.toggle("pro", isPro());
 
+  const modeNote = $("#modeNote");
+  if(modeNote){
+    modeNote.textContent = selling()
+      ? "Selling is on. Plans are shown, the free tier is enforced, and the service meters the premium voice."
+      : "Personal mode. Unlimited documents, unlimited listening, no upgrade prompts. Device voices are free and always will be.";
+  }
+
   const note = $("#svcNote");
   if(!note) return;
   if(!serviceOn()){
-    note.textContent = "Not connected. Device voices only, and purchases stay on this device.";
+    note.textContent = selling()
+      ? "Not connected. Device voices only, and purchases stay on this device."
+      : "Not connected. Device voices are unlimited. Connecting the service adds the premium voice and metering.";
   } else if(S.licenceSource === "server"){
     let s = "Connected. Plan: " + ((S.L && S.L.planName) || "Free") + ".";
     if(S.L && S.L.voiceCharsPerMonth){
@@ -1302,6 +1329,8 @@ function paintDrive(){
   $("#swText").classList.toggle("on", !!S.settings.showText);
   $("#loopBtn").style.color = S.settings.loop ? "var(--accent)" : "";
   $("#textPane").style.display = S.settings.showText ? "" : "none";
+  const sell = $("#swSell");
+  if(sell) sell.classList.toggle("on", selling());
 }
 
 function highlight(i){
@@ -1575,7 +1604,7 @@ function nextIndex(i){
 function play(){
   if(!S.doc) return;
   if(!synth){ toast("This browser has no speech engine."); return; }
-  if(!isPro() && minutesUsed() >= FREE_LIMITS.minutes){
+  if(selling() && !isPro() && minutesUsed() >= FREE_LIMITS.minutes){
     S.playing = false; paintPlay();
     showUpgrade("You have used your 10 free minutes",
       "Upgrade to keep listening. Your place in the document is saved.");
@@ -1586,6 +1615,7 @@ function play(){
   paintPlay();
   mediaMeta();
   mediaState();
+  mediaKeepAlive(true);
   requestWake();
   S._startedAt = Date.now();
   synth.cancel();
@@ -1595,6 +1625,7 @@ function pause(){
   S.playing = false;
   paintPlay();
   mediaState();
+  mediaKeepAlive(false);
   clearTimeout(S.timer);
   stopAudio();
   try { synth.cancel(); } catch(e){}
@@ -1619,6 +1650,7 @@ function paintPlay(){
 function finishDoc(){
   S.playing = false;
   paintPlay();
+  mediaKeepAlive(false);
   tickUsage();
   S.cur = S.doc ? S.doc.sentences.length - 1 : 0;
   paintProgress();
@@ -1666,6 +1698,41 @@ function mediaMeta(){
     });
   } catch(e){}
 }
+
+/* A silent looping track. Without a real audio element the phone can decide we
+   are not the active media app, and then the car screen forgets us and the
+   steering wheel buttons stop arriving. Nearby silent audio keeps the session
+   alive for the whole drive. */
+let keepAliveEl = null, keepAliveUrl = null;
+function silentWavUrl(){
+  if(keepAliveUrl) return keepAliveUrl;
+  const sr = 8000, n = sr;
+  const buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); v.setUint32(4, 36 + n, true); ws(8, "WAVE"); ws(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+  ws(36, "data"); v.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+  keepAliveUrl = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+  return keepAliveUrl;
+}
+function mediaKeepAlive(on){
+  try {
+    if(on){
+      if(!keepAliveEl){
+        keepAliveEl = new Audio(silentWavUrl());
+        keepAliveEl.loop = true;
+        keepAliveEl.volume = 0.001;
+      }
+      keepAliveEl.play().catch(() => {});
+    } else if(keepAliveEl){
+      keepAliveEl.pause();
+    }
+  } catch(e){}
+}
+const keepAliveRunning = () => !!keepAliveEl && !keepAliveEl.paused;
+
 function mediaState(){
   if(!("mediaSession" in navigator)) return;
   try { navigator.mediaSession.playbackState = S.playing ? "playing" : "paused"; } catch(e){}
@@ -1947,6 +2014,16 @@ function init(){
     S.settings.keepAwake ? requestWake() : releaseWake();
   };
   $("#swText").onclick = () => { S.settings.showText = !S.settings.showText; save("rb_settings", S.settings); paintDrive(); };
+  $("#swSell").onclick = () => {
+    S.settings.mode = selling() ? "personal" : "sell";
+    save("rb_settings", S.settings);
+    paintDrive();
+    paintPlan();
+    paintUsage();
+    toast(selling()
+      ? "Selling is on. Plans and the free tier are now live."
+      : "Personal mode. Unlimited, and no upgrade prompts.", 4200);
+  };
 
   // outline
   $("#outlineBtn").onclick = () => {
@@ -2008,7 +2085,16 @@ window.addEventListener("load", async () => {
     extract: (file) => extract(file),
     buildDoc, splitSentences, fromPlain, classify,
     state: S, DB,
-    deviceId, apiUrl, serviceOn, refreshLicence, fetchVoice, purchase
+    deviceId, apiUrl, serviceOn, refreshLicence, fetchVoice, purchase,
+    keepAliveRunning,
+    // used by the tests, and by anything that needs to switch modes in one step
+    setMode(m){
+      S.settings.mode = m === "sell" ? "sell" : "personal";
+      save("rb_settings", S.settings);
+      paintDrive();
+      paintPlan();
+      paintUsage();
+    }
   };
 
   await refreshLicence();

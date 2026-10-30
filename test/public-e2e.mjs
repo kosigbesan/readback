@@ -38,6 +38,7 @@ await page.waitForFunction("window.__rb && window.__rb.refreshLicence", { timeou
 ok("the deployed app boots", true, APP);
 
 const before = await page.evaluate(async (base) => {
+  window.__rb.setMode("sell");
   window.__rb.state.settings.apiBase = base;
   localStorage.setItem("rb_settings", JSON.stringify(window.__rb.state.settings));
   await window.__rb.refreshLicence();
