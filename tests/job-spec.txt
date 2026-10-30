@@ -1,0 +1,13 @@
+Oxide Systems, Senior Backend Engineer
+
+About the role
+You will own the ingestion pipeline that carries about forty million events a day.
+The team is six engineers and we deploy continuously.
+
+What we are looking for
+Strong Go or Rust. Comfort with Postgres at scale. Someone who has run an on call rotation
+and has opinions about alerting that are not just "add more dashboards".
+
+Interview process
+A thirty minute screen, a two hour pairing session on a real bug, then a system design
+round with two engineers and the hiring manager.

@@ -1,0 +1,1752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>ReadBack: listen to your interview prep</title>
+<meta name="description" content="Turn PDFs, Word files and notes into audio you can listen to on the drive. Built for interview prep.">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#12100d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ReadBack">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/icon-192.png">
+<style>
+:root{
+  --ink:#12100d;
+  --ink2:#1b1814;
+  --ink3:#232019;
+  --paper:#f4f0e7;
+  --paper2:#e7e1d3;
+  --accent:#e8a33d;
+  --accent2:#c9821f;
+  --line:rgba(244,240,231,.14);
+  --line2:rgba(244,240,231,.08);
+  --mute:#9a917f;
+  --good:#7fb069;
+  --bad:#d0603f;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%}
+body{
+  background:var(--ink); color:var(--paper); font-family:var(--sans);
+  overscroll-behavior:none; -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,select{font-family:inherit}
+.hidden{display:none!important}
+
+/* ---------- shell ---------- */
+#app{height:100dvh;display:flex;flex-direction:column;max-width:720px;margin:0 auto;
+     background:var(--ink);position:relative;overflow:hidden}
+header.top{
+  padding:calc(var(--safe-t) + 14px) 20px 12px; display:flex;align-items:center;gap:12px;
+  border-bottom:1px solid var(--line2); flex:0 0 auto;
+}
+.brand{font-family:var(--serif);font-size:20px;letter-spacing:-.02em}
+.brand em{font-style:normal;color:var(--accent)}
+.grow{flex:1}
+.planpill{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  border:1px solid var(--line);border-radius:999px;padding:6px 11px;color:var(--mute);
+}
+.planpill.pro{border-color:rgba(232,163,61,.5);color:var(--accent)}
+
+main{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
+.screen{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;
+        -webkit-overflow-scrolling:touch}
+.screen.pad{padding:20px 20px calc(20px + var(--safe-b))}
+
+/* ---------- upload screen ---------- */
+h1.lede{font-family:var(--serif);font-weight:400;font-size:31px;line-height:1.12;
+        letter-spacing:-.025em;margin:8px 0 10px}
+h1.lede b{font-weight:400;color:var(--accent)}
+p.sub{color:var(--mute);font-size:14.5px;line-height:1.55;margin:0 0 22px;max-width:44ch}
+
+.drop{
+  border:1.5px dashed var(--line);border-radius:16px;padding:30px 20px;text-align:center;
+  transition:.18s; background:var(--ink2); position:relative;
+}
+.drop.over{border-color:var(--accent);background:rgba(232,163,61,.07)}
+.drop .ico{width:30px;height:30px;color:var(--accent);opacity:.85}
+.drop h2{font-size:15.5px;font-weight:600;margin:12px 0 4px}
+.drop p{margin:0;color:var(--mute);font-size:12.5px}
+.drop input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+
+.formats{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 26px}
+.chip{
+  font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  border:1px solid var(--line2);border-radius:6px;padding:5px 8px;color:var(--mute);
+}
+.chip.on{border-color:rgba(232,163,61,.45);color:var(--accent)}
+
+.rowlab{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 10px}
+.rowlab h3{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);
+           font-weight:600;margin:0}
+.linkish{font-size:12.5px;color:var(--accent);text-decoration:none}
+
+textarea{
+  width:100%;min-height:120px;background:var(--ink2);border:1px solid var(--line2);
+  border-radius:12px;padding:14px;color:var(--paper);font-size:15px;line-height:1.5;
+  resize:vertical;font-family:var(--sans)
+}
+textarea:focus{outline:none;border-color:rgba(232,163,61,.5)}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  border-radius:11px;padding:13px 18px;font-size:14.5px;font-weight:600;
+  border:1px solid var(--line);transition:.15s
+}
+.btn:active{transform:scale(.98)}
+.btn.primary{background:var(--accent);color:#1a1408;border-color:var(--accent)}
+.btn.ghost{color:var(--paper);background:var(--ink2)}
+.btn.wide{width:100%;margin-top:12px}
+.btn:disabled{opacity:.45;pointer-events:none}
+
+.liblist{display:flex;flex-direction:column;gap:9px;margin-top:4px}
+.lib{
+  display:flex;align-items:center;gap:13px;background:var(--ink2);border:1px solid var(--line2);
+  border-radius:12px;padding:13px 14px;text-align:left;width:100%
+}
+.lib:active{background:var(--ink3)}
+.lib .kind{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;width:42px;flex:0 0 auto;
+  color:var(--accent);text-align:center;border:1px solid rgba(232,163,61,.3);
+  border-radius:5px;padding:5px 0
+}
+.lib .meta{min-width:0;flex:1}
+.lib .meta b{display:block;font-size:14px;font-weight:600;white-space:nowrap;
+             overflow:hidden;text-overflow:ellipsis}
+.lib .meta span{display:block;font-size:11.5px;color:var(--mute);margin-top:3px}
+.lib .pct{font-family:var(--mono);font-size:11px;color:var(--mute);flex:0 0 auto}
+.bar{height:2px;background:var(--line2);border-radius:2px;margin-top:7px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);width:0}
+
+.empty{color:var(--mute);font-size:13px;padding:16px 2px}
+
+/* ---------- reader screen ---------- */
+.reader{flex:1;min-height:0;display:flex;flex-direction:column}
+.rtop{padding:12px 16px 10px;border-bottom:1px solid var(--line2);flex:0 0 auto}
+.rtop .t1{display:flex;align-items:center;gap:10px}
+.rtop .docname{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;
+               text-overflow:ellipsis;flex:1;min-width:0}
+.iconbtn{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+         border:1px solid var(--line2);flex:0 0 auto}
+.iconbtn:active{background:var(--ink3)}
+.iconbtn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8;
+             stroke-linecap:round;stroke-linejoin:round}
+.rtop .t2{display:flex;align-items:center;gap:10px;margin-top:9px}
+.rtop .t2 .pct{font-family:var(--mono);font-size:11px;color:var(--mute);flex:0 0 auto}
+.rtop .t2 .bar{flex:1;margin:0}
+
+.text{
+  flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:18px 20px 40px;scroll-behavior:smooth
+}
+.text p{margin:0 0 1.05em;font-size:16.5px;line-height:1.72;color:rgba(244,240,231,.62);
+        font-family:var(--serif);transition:color .25s}
+.text p.k-h1{font-size:23px;line-height:1.25;color:rgba(244,240,231,.42);margin:1.6em 0 .7em;
+             font-weight:400;letter-spacing:-.02em}
+.text p.k-h2{font-size:14px;line-height:1.35;color:rgba(232,163,61,.72);margin:1.7em 0 .7em;
+             font-weight:600;letter-spacing:.13em;text-transform:uppercase;font-family:var(--sans)}
+.text p:first-child.k-h1{margin-top:0}
+/* questions read as the spine of an interview pack, answers as the body */
+.text p.k-q{font-family:var(--sans);font-size:16px;line-height:1.5;font-weight:600;
+            color:rgba(244,240,231,.82);border-left:2px solid rgba(232,163,61,.55);
+            padding-left:13px;margin:1.5em 0 .8em}
+.text p.k-a{margin-left:2px}
+.text .s{cursor:pointer;border-radius:3px;padding:1px 0;transition:background .2s,color .2s}
+.text .s.on{color:var(--paper);background:rgba(232,163,61,.18);box-shadow:0 0 0 2px rgba(232,163,61,.18)}
+.text .s.done{color:rgba(244,240,231,.34)}
+.text .qtag{
+  font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.04em;
+  color:#1a1408;background:var(--accent);border-radius:4px;padding:2px 6px;
+  margin-right:9px;vertical-align:1px
+}
+
+.transport{
+  flex:0 0 auto;border-top:1px solid var(--line2);background:var(--ink2);
+  padding:12px 16px calc(12px + var(--safe-b));
+}
+.transport .line1{display:flex;align-items:center;justify-content:center;gap:14px}
+.tbtn{
+  display:grid;place-items:center;border-radius:12px;width:46px;height:46px;
+  color:var(--paper);border:1px solid var(--line2);flex:0 0 auto
+}
+.tbtn:active{background:var(--ink3)}
+.tbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.9;
+          stroke-linecap:round;stroke-linejoin:round}
+.tbtn.play{width:66px;height:66px;background:var(--accent);border-color:var(--accent);
+           color:#1a1408;border-radius:20px}
+.tbtn.play svg{width:26px;height:26px;stroke-width:2.2;fill:currentColor;stroke:none}
+.transport .line2{display:flex;align-items:center;gap:12px;margin-top:12px}
+.transport .line2 label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+                        text-transform:uppercase;color:var(--mute);flex:0 0 auto}
+input[type=range]{
+  -webkit-appearance:none;appearance:none;height:3px;background:var(--line);border-radius:3px;
+  flex:1;outline:none
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--accent);
+  border:3px solid var(--ink2);box-shadow:0 0 0 1px var(--accent)
+}
+input[type=range]::-moz-range-thumb{
+  width:20px;height:20px;border-radius:50%;background:var(--accent);border:3px solid var(--ink2)
+}
+.rateval{font-family:var(--mono);font-size:11px;color:var(--accent);width:34px;text-align:right;flex:0 0 auto}
+
+/* driving mode */
+body.driving .text p{font-size:19px;line-height:1.6}
+body.driving .transport{padding-top:16px}
+body.driving .tbtn{width:56px;height:56px;border-radius:14px}
+body.driving .tbtn.play{width:86px;height:86px;border-radius:26px}
+body.driving .tbtn svg{width:25px;height:25px}
+body.driving .tbtn.play svg{width:34px;height:34px}
+body.driving .line2{display:none}
+body.driving .rtop .t2 .pct{font-size:13px}
+.driveflag{display:none;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+           text-transform:uppercase;color:var(--accent);border:1px solid rgba(232,163,61,.4);
+           border-radius:5px;padding:3px 7px;flex:0 0 auto}
+body.driving .driveflag{display:inline-block}
+
+/* ---------- sheets ---------- */
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);opacity:0;pointer-events:none;
+       transition:opacity .22s;z-index:40}
+#scrim.show{opacity:1;pointer-events:auto}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;max-height:88dvh;overflow-y:auto;
+  background:var(--ink2);border-radius:20px 20px 0 0;border-top:1px solid var(--line);
+  transform:translateY(102%);transition:transform .28s cubic-bezier(.32,.72,0,1);
+  padding:10px 20px calc(26px + var(--safe-b));max-width:720px;margin:0 auto
+}
+.sheet.show{transform:translateY(0)}
+.sheet .grab{width:38px;height:4px;border-radius:4px;background:var(--line);margin:6px auto 16px}
+.sheet h2{font-family:var(--serif);font-size:21px;font-weight:400;margin:0 0 4px;
+          letter-spacing:-.02em}
+.sheet .shsub{color:var(--mute);font-size:13px;margin:0 0 18px;line-height:1.5}
+.field{margin-bottom:16px}
+.field label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+             text-transform:uppercase;color:var(--mute);margin-bottom:7px}
+select,input[type=text],input[type=password]{
+  width:100%;background:var(--ink);border:1px solid var(--line2);border-radius:10px;
+  padding:12px;color:var(--paper);font-size:14.5px
+}
+select:focus,input:focus{outline:none;border-color:rgba(232,163,61,.5)}
+.switchrow{display:flex;align-items:center;justify-content:space-between;gap:14px;
+           padding:13px 0;border-bottom:1px solid var(--line2)}
+.switchrow:last-child{border-bottom:0}
+.switchrow .lbl b{display:block;font-size:14px;font-weight:600}
+.switchrow .lbl span{display:block;font-size:11.5px;color:var(--mute);margin-top:3px;line-height:1.4}
+.sw{width:46px;height:27px;border-radius:999px;background:var(--line);position:relative;
+    flex:0 0 auto;transition:.2s}
+.sw i{position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;
+      background:var(--paper);transition:.2s}
+.sw.on{background:var(--accent2)}
+.sw.on i{left:22px;background:#1a1408}
+
+/* outline */
+.outline{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+.oi{display:flex;align-items:baseline;gap:10px;padding:12px 4px;border-bottom:1px solid var(--line2);
+    text-align:left;width:100%}
+.oi b{font-size:14px;font-weight:600;flex:1;min-width:0}
+.oi .n{font-family:var(--mono);font-size:10px;color:var(--mute);flex:0 0 auto}
+.oi:active{background:var(--ink3)}
+
+/* pricing */
+.plan{border:1px solid var(--line2);border-radius:14px;padding:18px;margin-bottom:12px;
+      position:relative}
+.plan.best{border-color:rgba(232,163,61,.55);background:rgba(232,163,61,.05)}
+.plan .tag{position:absolute;top:-9px;left:16px;background:var(--accent);color:#1a1408;
+           font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+           padding:3px 8px;border-radius:4px}
+.plan h3{font-size:15px;margin:0 0 2px;font-weight:600}
+.plan .price{font-family:var(--serif);font-size:30px;letter-spacing:-.03em;margin:6px 0 2px}
+.plan .price small{font-family:var(--sans);font-size:12.5px;color:var(--mute);font-weight:400}
+.plan ul{margin:12px 0 0;padding:0;list-style:none}
+.plan li{font-size:13px;color:rgba(244,240,231,.78);line-height:1.9;padding-left:18px;position:relative}
+.plan li:before{content:"";position:absolute;left:0;top:.62em;width:7px;height:1px;
+                background:var(--accent)}
+.plan li.no{color:var(--mute)}
+.plan li.no:before{background:var(--line)}
+.usagebox{background:var(--ink);border:1px solid var(--line2);border-radius:12px;
+          padding:14px;margin-bottom:16px}
+.usagebox .u1{display:flex;justify-content:space-between;font-size:13px;margin-bottom:9px}
+.usagebox .u1 b{font-family:var(--mono);font-size:12px;color:var(--accent)}
+.usagebox .bar{height:4px;margin:0}
+
+/* misc */
+.toast{
+  position:fixed;left:50%;bottom:calc(160px + var(--safe-b));transform:translate(-50%,14px);
+  background:var(--paper);color:#1a1408;font-size:13px;font-weight:600;padding:11px 17px;
+  border-radius:10px;opacity:0;pointer-events:none;transition:.22s;z-index:60;
+  max-width:88vw;text-align:center
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.spin{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent);
+      border-radius:50%;animation:sp .7s linear infinite;display:inline-block}
+@keyframes sp{to{transform:rotate(360deg)}}
+.errbox{border:1px solid rgba(208,96,63,.4);background:rgba(208,96,63,.08);border-radius:12px;
+        padding:14px;font-size:13px;line-height:1.6;color:#f0c3b6;margin-bottom:16px}
+.note{font-size:11.5px;color:var(--mute);line-height:1.6;margin-top:14px}
+.note b{color:rgba(244,240,231,.8);font-weight:600}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand">Read<em>Back</em></div>
+    <div class="grow"></div>
+    <button class="planpill" id="planPill">Free</button>
+  </header>
+
+  <main>
+    <!-- ============ UPLOAD ============ -->
+    <section class="screen pad" id="screenUpload">
+      <h1 class="lede">Your prep, <b>read aloud</b> on the drive.</h1>
+      <p class="sub">Drop a job spec, a question pack or your own notes. ReadBack turns it into
+        audio you can listen to hands free, one sentence at a time.</p>
+
+      <div class="drop" id="drop">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"
+                fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M14 3v5h5M8.5 13h7M8.5 16.5h4.5"
+                fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <h2>Add a document</h2>
+        <p>PDF, Word, text, Markdown, EPUB, slides</p>
+        <input type="file" id="file" accept=".pdf,.docx,.doc,.rtf,.txt,.md,.markdown,.html,.htm,.epub,.pptx,.odt,.csv" multiple>
+      </div>
+
+      <div class="formats" id="formatChips"></div>
+
+      <div id="errSlot"></div>
+
+      <div class="rowlab">
+        <h3>Or paste text</h3>
+        <a href="#" class="linkish" id="fillSample">Load a sample pack</a>
+      </div>
+      <textarea id="pasteBox" placeholder="Paste a job description or your own question list here..."></textarea>
+      <button class="btn primary wide" id="pasteGo">Turn into audio</button>
+
+      <div class="rowlab" style="margin-top:30px">
+        <h3>Your library</h3>
+        <span class="linkish" id="usageLine"></span>
+      </div>
+      <div class="liblist" id="lib"></div>
+
+      <div class="note">
+        <b>Works offline.</b> Files are read inside your browser. Nothing is uploaded to a server,
+        so your interview notes stay on your phone. Add ReadBack to your home screen for the
+        best experience in the car.
+      </div>
+    </section>
+
+    <!-- ============ READER ============ -->
+    <section class="screen hidden" id="screenReader">
+      <div class="reader">
+        <div class="rtop">
+          <div class="t1">
+            <button class="iconbtn" id="backBtn" aria-label="Back">
+              <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+            </button>
+            <div class="docname" id="docName">Document</div>
+            <span class="driveflag">Driving</span>
+            <button class="iconbtn" id="outlineBtn" aria-label="Sections">
+              <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+            </button>
+            <button class="iconbtn" id="settingsBtn" aria-label="Settings">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
+            </button>
+          </div>
+          <div class="t2">
+            <span class="pct" id="pct">0%</span>
+            <div class="bar"><i id="progBar"></i></div>
+            <span class="pct" id="posTxt">1 / 1</span>
+          </div>
+        </div>
+
+        <div class="text" id="textPane"></div>
+
+        <div class="transport">
+          <div class="line1">
+            <button class="tbtn" id="prevBtn" aria-label="Previous sentence">
+              <svg viewBox="0 0 24 24"><path d="M18 6L9 12l9 6zM6 5v14"/></svg>
+            </button>
+            <button class="tbtn play" id="playBtn" aria-label="Play">
+              <svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4l13 8-13 8z"/></svg>
+            </button>
+            <button class="tbtn" id="nextBtn" aria-label="Next sentence">
+              <svg viewBox="0 0 24 24"><path d="M6 6l9 6-9 6zM18 5v14"/></svg>
+            </button>
+            <button class="tbtn" id="loopBtn" aria-label="Repeat section">
+              <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.7L20 8"/><path d="M20 4v4h-4"/><path d="M20 12a8 8 0 0 1-13.7 5.7L4 16"/><path d="M4 20v-4h4"/></svg>
+            </button>
+            <button class="tbtn" id="driveBtn" aria-label="Driving mode">
+              <svg viewBox="0 0 24 24"><path d="M5 11l1.6-4.2A2 2 0 0 1 8.5 5.5h7a2 2 0 0 1 1.9 1.3L19 11"/><path d="M4 11h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z"/><circle cx="7" cy="14" r=".8"/><circle cx="17" cy="14" r=".8"/></svg>
+            </button>
+          </div>
+          <div class="line2">
+            <label for="rate">Speed</label>
+            <input type="range" id="rate" min="0.6" max="2" step="0.05" value="1">
+            <span class="rateval" id="rateVal">1.0x</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="scrim"></div>
+
+<!-- settings sheet -->
+<div class="sheet" id="sheetSettings">
+  <div class="grab"></div>
+  <h2>Playback</h2>
+  <p class="shsub">Set this once. The car remembers.</p>
+
+  <div class="field">
+    <label for="voiceSel">Voice</label>
+    <select id="voiceSel"></select>
+  </div>
+
+  <div class="switchrow">
+    <div class="lbl"><b>Driving mode</b><span>Bigger controls, fewer distractions</span></div>
+    <div class="sw" id="swDrive"><i></i></div>
+  </div>
+  <div class="switchrow">
+    <div class="lbl"><b>Pause between question and answer</b><span>Leaves a gap so you can answer out loud first</span></div>
+    <div class="sw" id="swPause"><i></i></div>
+  </div>
+  <div class="switchrow">
+    <div class="lbl"><b>Repeat each section</b><span>Loops the current heading until you turn it off</span></div>
+    <div class="sw" id="swLoop"><i></i></div>
+  </div>
+  <div class="switchrow">
+    <div class="lbl"><b>Keep screen awake</b><span>Stops the phone sleeping while it reads</span></div>
+    <div class="sw" id="swWake"><i></i></div>
+  </div>
+  <div class="switchrow">
+    <div class="lbl"><b>Show text while reading</b><span>Turn off for audio only, which is lighter on battery</span></div>
+    <div class="sw" id="swText"><i></i></div>
+  </div>
+
+  <div class="field" style="margin-top:20px">
+    <label for="thinkSec">Thinking time after a question</label>
+    <select id="thinkSec">
+      <option value="0">No pause</option>
+      <option value="3">3 seconds</option>
+      <option value="5" selected>5 seconds</option>
+      <option value="8">8 seconds</option>
+      <option value="12">12 seconds</option>
+    </select>
+  </div>
+
+  <div style="border-top:1px solid var(--line2);margin-top:22px;padding-top:18px">
+    <h2 style="font-size:17px">Premium voice</h2>
+    <p class="shsub" style="margin-bottom:12px">Use an ElevenLabs key for studio quality audio.
+      Your key stays in this browser.</p>
+    <div class="field">
+      <label for="elKey">ElevenLabs API key</label>
+      <input type="password" id="elKey" placeholder="sk_..." autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="elVoice">ElevenLabs voice ID</label>
+      <input type="text" id="elVoice" placeholder="21m00Tcm4TlvDq8ikWAM" autocomplete="off">
+    </div>
+    <button class="btn ghost wide" id="saveEl">Save premium voice</button>
+    <p class="note" id="elNote"></p>
+  </div>
+</div>
+
+<!-- outline sheet -->
+<div class="sheet" id="sheetOutline">
+  <div class="grab"></div>
+  <h2>Sections</h2>
+  <p class="shsub">Jump to a part of the document.</p>
+  <div class="outline" id="outlineList"></div>
+</div>
+
+<!-- upgrade sheet -->
+<div class="sheet" id="sheetUpgrade">
+  <div class="grab"></div>
+  <h2 id="upTitle">Read more of your prep</h2>
+  <p class="shsub" id="upSub">The free plan covers one document and short sessions.</p>
+  <div class="usagebox" id="usageBox"></div>
+  <div id="planList"></div>
+  <p class="note">Prices in USD. Cancel anytime. Premium voice minutes are billed against the
+    ElevenLabs key you connect, so you keep full control of that cost.</p>
+  <button class="btn ghost wide" id="closeUp">Not now</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/mammoth.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script>
+"use strict";
+if(window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdf.worker.min.js"; }
+
+/* ================= state ================= */
+const DEFAULT_SETTINGS = {
+  rate: 1, voiceURI: "", driving: false, qaPause: true, loop: false,
+  keepAwake: true, showText: true, thinkMs: 5000, elKey: "", elVoice: ""
+};
+const FREE_LIMITS = { docs: 1, minutes: 10 };
+
+const S = {
+  settings: load("rb_settings", DEFAULT_SETTINGS),
+  usage: load("rb_usage", { minutes: 0, docs: 0 }),
+  pro: load("rb_pro", false),
+  doc: null,          // {id, name, kind, blocks, sentences, pos}
+  playing: false,
+  cur: -1,
+  timer: null,
+  voice: null,
+  voices: [],
+  wakeLock: null,
+  secStart: 0,
+  secEnd: 0
+};
+
+function load(k, d){
+  try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; }
+  catch(e){ return d; }
+}
+function save(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+
+function toast(msg, ms){
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove("show"), ms || 2600);
+}
+function fmt(n){ return n.toLocaleString("en-US"); }
+function listenLabel(words){
+  const m = Math.max(1, Math.round(words / 200));
+  return m + (m === 1 ? " minute" : " minutes") + " of listening";
+}
+
+/* ================= IndexedDB for document bodies ================= */
+const DB = (() => {
+  let p = null;
+  function open(){
+    if(p) return p;
+    p = new Promise((res, rej) => {
+      const r = indexedDB.open("readback", 1);
+      r.onupgradeneeded = () => {
+        const db = r.result;
+        if(!db.objectStoreNames.contains("docs")) db.createObjectStore("docs", {keyPath:"id"});
+      };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    return p;
+  }
+  async function tx(mode){
+    const db = await open();
+    return db.transaction("docs", mode).objectStore("docs");
+  }
+  return {
+    async put(rec){
+      const st = await tx("readwrite");
+      await new Promise((res, rej) => { const q = st.put(rec); q.onsuccess = res; q.onerror = () => rej(q.error); });
+    },
+    async get(id){
+      const st = await tx("readonly");
+      return new Promise((res, rej) => { const q = st.get(id); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+    },
+    async all(){
+      const st = await tx("readonly");
+      return new Promise((res, rej) => { const q = st.getAll(); q.onsuccess = () => res(q.result || []); q.onerror = () => rej(q.error); });
+    },
+    async del(id){
+      const st = await tx("readwrite");
+      await new Promise((res, rej) => { const q = st.delete(id); q.onsuccess = res; q.onerror = () => rej(q.error); });
+    }
+  };
+})();
+
+/* ================= sentence splitting ================= */
+const ABBR = /(?:^|[\s(])(?:mr|mrs|ms|dr|prof|sr|jr|st|vs|etc|eg|ie|fig|no|inc|ltd|co|corp|approx|dept|est|al|vol|ed|pp|cf)$/i;
+
+function splitSentences(text){
+  const t = String(text).replace(/\s+/g, " ").trim();
+  if(!t) return [];
+  const out = [];
+  let start = 0;
+  for(let i = 0; i < t.length; i++){
+    const c = t[i];
+    if(c !== "." && c !== "!" && c !== "?") continue;
+    let j = i + 1;
+    while(j < t.length && /["'”’)\]]/.test(t[j])) j++;
+    if(j < t.length && t[j] !== " ") continue;
+    if(c === "."){
+      const head = t.slice(start, i);
+      const lastWord = head.match(/([A-Za-z.]+)$/);
+      const lw = lastWord ? lastWord[1] : "";
+      if(/^[A-Za-z]$/.test(lw)) continue;                       // single initial, "J."
+      if(/^(?:[A-Za-z]\.){2,}$/.test(lw)) continue;             // "U.S."
+      if(ABBR.test(lw)) continue;                                // "Dr", "etc"
+      const rest = t.slice(j).trimStart();
+      if(rest && /^[a-z]/.test(rest)) continue;                  // "e.g. this"
+    }
+    const piece = t.slice(start, j).trim();
+    if(piece) out.push(piece);
+    start = j;
+    while(start < t.length && t[start] === " ") start++;
+    i = start - 1;
+  }
+  const tail = t.slice(start).trim();
+  if(tail) out.push(tail);
+  return out.length ? out : [t];
+}
+
+// long sentences get chopped at a comma so each utterance stays short
+function splitLong(s, max){
+  max = max || 240;
+  if(s.length <= max) return [s];
+  const out = [];
+  let rest = s;
+  while(rest.length > max){
+    let cut = -1;
+    const window = rest.slice(0, max);
+    const marks = [window.lastIndexOf("; "), window.lastIndexOf(", "), window.lastIndexOf(" and "), window.lastIndexOf(" ")];
+    for(const m of marks){ if(m > max * 0.4){ cut = m + 1; break; } }
+    if(cut < 0) cut = max;
+    out.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if(rest) out.push(rest);
+  return out;
+}
+
+/* ================= block classification ================= */
+const QRE = /^(?:q\s*[:\-–]|question\s*[:\-–]|interviewer\s*[:\-–])\s*/i;
+const ARE = /^(?:a\s*[:\-–]|ans(?:wer)?\s*[:\-–]|candidate\s*[:\-–]|me\s*[:\-–])\s*/i;
+// interview packs often drop the "Q:" prefix entirely
+const QSTART = /^(?:tell me|walk me|talk me through|describe|explain|give me|name a|share an?|what would you|how would you)\b/i;
+
+function classify(raw, forced){
+  let text = String(raw).replace(/\s+/g, " ").trim();
+  if(!text) return null;
+  if(QRE.test(text)) return { kind:"q", text: text.replace(QRE, "") };
+  if(ARE.test(text)) return { kind:"a", text: text.replace(ARE, "") };
+  const shortish = text.length < 160;
+  if(shortish && /\?\s*$/.test(text)) return { kind:"q", text };
+  if(shortish && QSTART.test(text)) return { kind:"q", text };
+  if(forced === "h1" || forced === "h2") return { kind: forced, text };
+  return { kind: "p", text };
+}
+
+// a bare line that reads like a title rather than a sentence
+function looksLikeHeading(line){
+  if(line.length > 70) return false;
+  if(/[.!?:;,]$/.test(line)) return false;
+  if(line.split(/\s+/).length > 9) return false;
+  return /^[A-Z0-9]/.test(line);
+}
+
+/* ================= extractors ================= */
+const KIND_LABEL = {
+  pdf:"PDF", docx:"DOCX", doc:"DOC", rtf:"RTF", txt:"TXT", md:"MD",
+  html:"HTML", epub:"EPUB", pptx:"PPTX", odt:"ODT", csv:"CSV", paste:"TEXT"
+};
+
+async function extract(file){
+  const name = file.name || "Pasted text";
+  const ext = (name.split(".").pop() || "").toLowerCase();
+  let blocks = [];
+  if(ext === "pdf") blocks = await fromPdf(file);
+  else if(ext === "docx") blocks = await fromDocx(file);
+  else if(ext === "doc") throw new Error("Legacy .doc files cannot be read directly. Open it in Word and save as .docx or PDF, then try again.");
+  else if(ext === "rtf") blocks = fromRtf(await file.text());
+  else if(ext === "epub") blocks = await fromEpub(file);
+  else if(ext === "pptx") blocks = await fromPptx(file);
+  else if(ext === "odt") blocks = await fromOdt(file);
+  else if(ext === "html" || ext === "htm") blocks = fromHtml(await file.text());
+  else if(ext === "md" || ext === "markdown") blocks = fromMarkdown(await file.text());
+  else blocks = fromPlain(await file.text());
+  blocks = blocks.filter(b => b && b.text && b.text.trim().length > 0);
+  if(!blocks.length) throw new Error("No readable text found. If this is a scanned PDF, it has no text layer, so it needs OCR first.");
+  return { name, ext: ext || "txt", blocks };
+}
+
+function fromPlain(text){
+  const out = [];
+  const paras = String(text).replace(/\r\n?/g, "\n").split(/\n\s*\n+/);
+  for(const p of paras){
+    const lines = p.split("\n").map(l => l.trim()).filter(Boolean);
+    for(const ln of lines){
+      const c = classify(ln);
+      if(!c) continue;
+      if(c.kind === "p" && looksLikeHeading(c.text)) out.push({ kind: "h2", text: c.text });
+      else out.push(c);
+    }
+  }
+  return out;
+}
+
+function fromMarkdown(text){
+  const out = [];
+  const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+  let buf = [];
+  const flush = () => { if(buf.length){ const c = classify(buf.join(" ")); if(c) out.push(c); buf = []; } };
+  for(const raw of lines){
+    const ln = raw.trim();
+    if(!ln){ flush(); continue; }
+    if(/^#{1,6}\s+/.test(ln)){
+      flush();
+      const level = ln.match(/^#+/)[0].length;
+      out.push({ kind: level <= 2 ? "h1" : "h2", text: ln.replace(/^#+\s+/, "") });
+      continue;
+    }
+    if(/^([-*+]|\d+[.)])\s+/.test(ln)){
+      flush();
+      const c = classify(ln.replace(/^([-*+]|\d+[.)])\s+/, ""), "li");
+      if(c) out.push(c);
+      continue;
+    }
+    // a question or answer line stands on its own, even with no blank line
+    // after it. People write question packs one line per beat.
+    const solo = classify(ln.replace(/^>\s?/, ""));
+    if(solo && (solo.kind === "q" || solo.kind === "a")){ flush(); out.push(solo); continue; }
+    buf.push(ln.replace(/^>\s?/, ""));
+  }
+  flush();
+  return out;
+}
+
+function fromRtf(text){
+  let t = String(text);
+  // drop font/color tables and embedded binaries
+  t = t.replace(/\{\\\*[^{}]*(\{[^{}]*\})*[^{}]*\}/g, " ");
+  t = t.replace(/\\par[d]?\b/g, "\n");
+  t = t.replace(/\\line\b/g, "\n");
+  t = t.replace(/\\tab\b/g, " ");
+  t = t.replace(/\\'[0-9a-f]{2}/gi, " ");
+  t = t.replace(/\\u-?\d+\??/g, " ");
+  t = t.replace(/\\[a-z]+-?\d*\s?/gi, " ");
+  t = t.replace(/[{}]/g, " ");
+  t = t.replace(/[ \t]{2,}/g, " ");
+  return fromPlain(t);
+}
+
+function fromHtml(html){
+  const d = new DOMParser().parseFromString(String(html), "text/html");
+  d.querySelectorAll("script,style,noscript,svg,head").forEach(n => n.remove());
+  const out = [];
+  const HEAD = new Set(["H1","H2","H3","H4","H5","H6"]);
+  const walk = (el) => {
+    for(const node of Array.from(el.children)){
+      const tag = node.tagName;
+      if(HEAD.has(tag)){
+        const c = classify(node.textContent, tag === "H1" ? "h1" : "h2");
+        if(c) out.push(c);
+        continue;
+      }
+      if(tag === "LI"){
+        const c = classify(node.textContent, "li");
+        if(c) out.push(c);
+        continue;
+      }
+      if(tag === "P" || tag === "BLOCKQUOTE" || tag === "PRE" || tag === "TD" || tag === "FIGCAPTION"){
+        const c = classify(node.textContent);
+        if(c) out.push(c);
+        continue;
+      }
+      if(tag === "TABLE"){
+        for(const tr of node.querySelectorAll("tr")){
+          const cells = Array.from(tr.querySelectorAll("td,th")).map(td => td.textContent.trim()).filter(Boolean);
+          if(cells.length){ const c = classify(cells.join(". ")); if(c) out.push(c); }
+        }
+        continue;
+      }
+      if(node.children.length) walk(node);
+      else {
+        const c = classify(node.textContent);
+        if(c) out.push(c);
+      }
+    }
+  };
+  walk(d.body || d.documentElement);
+  if(!out.length){
+    const c = classify(d.body ? d.body.textContent : "");
+    if(c) out.push(c);
+  }
+  return out;
+}
+
+async function fromDocx(file){
+  const buf = await file.arrayBuffer();
+  let html = null;
+  try {
+    const res = await mammoth.convertToHtml({ arrayBuffer: buf });
+    html = res.value;
+  } catch(e){
+    html = null;
+  }
+  if(html && html.trim().length > 20) return fromHtml(html);
+
+  // fallback: pull raw paragraphs out of the docx xml
+  const zip = await JSZip.loadAsync(buf);
+  const xmlFile = zip.file("word/document.xml");
+  if(!xmlFile) throw new Error("This .docx file looks damaged or password protected.");
+  const xml = await xmlFile.async("string");
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  const out = [];
+  doc.querySelectorAll("p").forEach(p => {
+    const runs = Array.from(p.getElementsByTagName("t")).map(t => t.textContent).join("");
+    const style = p.getElementsByTagName("pStyle");
+    let forced = "p";
+    if(style.length){
+      const v = style[0].getAttribute("w:val") || "";
+      if(/^(Heading1|Title)$/i.test(v)) forced = "h1";
+      else if(/^Heading/i.test(v)) forced = "h2";
+    }
+    const c = classify(runs, forced);
+    if(c) out.push(c);
+  });
+  return out;
+}
+
+async function fromPdf(file){
+  if(!window.pdfjsLib) throw new Error("The PDF engine did not load. Check your connection once, then reopen.");
+  const buf = await file.arrayBuffer();
+  let doc;
+  try {
+    doc = await pdfjsLib.getDocument({ data: buf }).promise;
+  } catch(e){
+    const m = String(e && e.message || e);
+    if(/password/i.test(m)) throw new Error("This PDF is password protected. Remove the password, then try again.");
+    throw new Error("Could not open this PDF. It may be damaged.");
+  }
+  const blocks = [];
+  const sizes = [];
+  const pageLines = [];
+
+  for(let p = 1; p <= doc.numPages; p++){
+    const page = await doc.getPage(p);
+    const tc = await page.getTextContent();
+    const lines = [];
+    for(const item of tc.items){
+      const str = item.str;
+      if(!str) continue;
+      const tr = item.transform;
+      const y = Math.round(tr[5] * 2) / 2;
+      const h = item.height || Math.abs(tr[3]) || 10;
+      let line = null;
+      for(const L of lines){ if(Math.abs(L.y - y) <= Math.max(2.2, h * 0.55)){ line = L; break; } }
+      if(!line){ line = { y, h, items: [] }; lines.push(line); }
+      line.items.push({ str, x: tr[4], w: item.width || 0 });
+      if(h) sizes.push(h);
+      line.h = Math.max(line.h, h);
+    }
+    lines.sort((a, b) => b.y - a.y);
+    for(const L of lines){
+      L.items.sort((a, b) => a.x - b.x);
+      let text = "";
+      let endX = null;
+      for(const it of L.items){
+        if(endX != null){
+          const gap = it.x - endX;
+          if(gap > Math.max(1.2, L.h * 0.12) && !/\s$/.test(text)) text += " ";
+        }
+        text += it.str;
+        endX = it.x + (it.w || 0);
+      }
+      text = text.replace(/\s+/g, " ").trim();
+      if(text) pageLines.push({ text, y: L.y, h: L.h, page: p });
+    }
+  }
+  if(!pageLines.length) return [];
+
+  const sorted = sizes.slice().sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length * 0.5)] || 10;
+
+  // merge lines into paragraphs, treat oversized short lines as headings
+  let cur = null;
+  let prev = null;
+  for(const L of pageLines){
+    const isQA = QRE.test(L.text) || ARE.test(L.text);
+    // a heading is bigger than the body text AND bigger than the line above it,
+    // which stops a wrapped question from being sliced into two headings
+    const isHead = !isQA && L.h >= median * 1.25 && L.text.length < 110 &&
+                   (!prev || prev.h < L.h * 0.98);
+    const bigHead = L.h >= median * 1.55;
+    if(isHead){
+      if(cur){ blocks.push(cur); cur = null; }
+      blocks.push({ kind: bigHead ? "h1" : "h2", text: L.text });
+      prev = L;
+      continue;
+    }
+    const brokePage = prev && prev.page !== L.page;
+    const gap = prev ? prev.y - L.y : 0;
+    const newPara = !cur || brokePage || gap > Math.max(prev.h, L.h) * 1.75;
+    if(newPara){
+      if(cur) blocks.push(cur);
+      const c = classify(L.text);
+      cur = c ? { kind: c.kind, text: c.text } : null;
+    } else if(cur){
+      cur.text += " " + L.text;
+    }
+    prev = L;
+  }
+  if(cur) blocks.push(cur);
+  return blocks;
+}
+
+async function fromEpub(file){
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const container = zip.file("META-INF/container.xml");
+  if(!container) throw new Error("This does not look like a valid EPUB.");
+  const cXml = await container.async("string");
+  const cDoc = new DOMParser().parseFromString(cXml, "application/xml");
+  const rootEl = cDoc.querySelector("rootfile");
+  const opfPath = rootEl && (rootEl.getAttribute("full-path") || rootEl.getAttribute("opf:full-path"));
+  if(!opfPath) throw new Error("Could not find the EPUB manifest.");
+  const opfFile = zip.file(opfPath);
+  if(!opfFile) throw new Error("Could not find the EPUB manifest.");
+  const opf = new DOMParser().parseFromString(await opfFile.async("string"), "application/xml");
+  const base = opfPath.includes("/") ? opfPath.slice(0, opfPath.lastIndexOf("/") + 1) : "";
+  const byId = {};
+  opf.querySelectorAll("manifest > item").forEach(it => {
+    byId[it.getAttribute("id")] = it.getAttribute("href");
+  });
+  const order = [];
+  opf.querySelectorAll("spine > itemref").forEach(ir => {
+    const href = byId[ir.getAttribute("idref")];
+    if(href) order.push(base + href);
+  });
+  const out = [];
+  for(const path of order){
+    const f = zip.file(decodeURIComponent(path)) || zip.file(path);
+    if(!f) continue;
+    const html = await f.async("string");
+    out.push(...fromHtml(html));
+  }
+  return out;
+}
+
+async function fromPptx(file){
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const slides = Object.keys(zip.files)
+    .filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+    .sort((a, b) => parseInt(a.match(/(\d+)\.xml/)[1], 10) - parseInt(b.match(/(\d+)\.xml/)[1], 10));
+  if(!slides.length) throw new Error("No slides found in this file.");
+  const out = [];
+  for(const path of slides){
+    const xml = await zip.file(path).async("string");
+    const d = new DOMParser().parseFromString(xml, "application/xml");
+    const texts = Array.from(d.getElementsByTagName("a:t")).map(t => t.textContent.trim()).filter(Boolean);
+    if(!texts.length) continue;
+    const title = texts[0].length < 120 ? texts[0] : "";
+    if(title) out.push({ kind: "h2", text: title });
+    const rest = title ? texts.slice(1) : texts;
+    if(rest.length) {
+      const c = classify(rest.join(". "));
+      if(c) out.push(c);
+    }
+  }
+  return out;
+}
+
+async function fromOdt(file){
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const f = zip.file("content.xml");
+  if(!f) throw new Error("This does not look like a valid ODT file.");
+  const xml = await f.async("string");
+  const d = new DOMParser().parseFromString(xml, "application/xml");
+  const out = [];
+  const push = (el, kind) => {
+    const t = el.textContent.replace(/\s+/g, " ").trim();
+    if(!t) return;
+    if(kind === "h1") out.push({ kind: "h1", text: t });
+    else if(kind === "h2") out.push({ kind: "h2", text: t });
+    else { const c = classify(t); if(c) out.push(c); }
+  };
+  Array.from(d.getElementsByTagName("text:p")).forEach(el => {
+    const parent = el.parentNode;
+    const isHead = parent && /^text:h$/i.test(parent.localName || "");
+    if(isHead){
+      const lvl = parseInt(parent.getAttribute("text:outline-level") || "2", 10);
+      push(el, lvl <= 1 ? "h1" : "h2");
+    } else push(el, "p");
+  });
+  return out;
+}
+
+/* ================= build doc from blocks ================= */
+function buildDoc(id, name, ext, blocks){
+  const sentences = [];   // {t, block, kind, head}
+  const rendered = [];    // blocks with sentence ranges
+  blocks.forEach((b, bi) => {
+    const parts = splitSentences(b.text);
+    const flat = [];
+    for(const s of parts) for(const piece of splitLong(s)) flat.push(piece);
+    const start = sentences.length;
+    for(const piece of flat){
+      sentences.push({ t: piece, block: bi, kind: b.kind, head: b.kind === "h1" || b.kind === "h2" });
+    }
+    rendered.push({ kind: b.kind, text: b.text, start, end: sentences.length - 1 });
+  });
+  // section boundaries, every heading starts a section
+  const sections = [];
+  let cur = { title: "Start", start: 0 };
+  for(const r of rendered){
+    if(r.kind === "h1" || r.kind === "h2"){
+      if(cur.start < r.start) { cur.end = r.start - 1; sections.push(cur); }
+      cur = { title: r.text, start: r.start };
+    }
+  }
+  cur.end = sentences.length - 1;
+  sections.push(cur);
+
+  return { id, name, ext, blocks, rendered, sentences, sections, pos: 0,
+           words: sentences.reduce((n, s) => n + s.t.split(/\s+/).length, 0) };
+}
+
+/* ================= usage / limits ================= */
+function minutesUsed(){ return S.usage.minutes || 0; }
+function isPro(){ return !!S.pro; }
+function docCount(){ return S.usage.docs || 0; }
+function limitHit(){ return !isPro() && docCount() >= FREE_LIMITS.docs; }
+function minutesLeft(){ return Math.max(0, FREE_LIMITS.minutes - minutesUsed()); }
+
+function addMinutes(mins){
+  if(isPro()) return;
+  S.usage.minutes = Math.round((minutesUsed() + mins) * 100) / 100;
+  save("rb_usage", S.usage);
+  paintUsage();
+  if(minutesUsed() >= FREE_LIMITS.minutes && S.doc) {
+    // let the current sentence finish, then stop and offer upgrade
+  }
+}
+function paintUsage(){
+  const line = $("#usageLine");
+  if(isPro()){ line.textContent = "Pro"; return; }
+  line.textContent = minutesLeft().toFixed(0) + " of " + FREE_LIMITS.minutes + " min left";
+  $("#planPill").textContent = "Free";
+  $("#planPill").classList.remove("pro");
+}
+function paintPlan(){
+  const p = $("#planPill");
+  if(isPro()){ p.textContent = "Pro"; p.classList.add("pro"); }
+  else { p.textContent = "Free"; p.classList.remove("pro"); }
+}
+
+/* ================= library ================= */
+async function refreshLibrary(){
+  const docs = (await DB.all()).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  const lib = $("#lib");
+  lib.innerHTML = "";
+  if(!docs.length){
+    lib.innerHTML = '<div class="empty">Nothing here yet. Add a document above.</div>';
+    paintUsage();
+    return;
+  }
+  for(const d of docs){
+    const btn = document.createElement("button");
+    btn.className = "lib";
+    const total = d.sentences ? d.sentences.length : 1;
+    const pos = Math.min(d.pos || 0, total - 1);
+    const pct = Math.round((pos / Math.max(1, total - 1)) * 100);
+    btn.innerHTML =
+      '<span class="kind">' + (KIND_LABEL[d.ext] || "DOC") + '</span>' +
+      '<span class="meta"><b></b><span></span><span class="bar"><i style="width:' + pct + '%"></i></span></span>' +
+      '<span class="pct">' + pct + '%</span>';
+    btn.querySelector("b").textContent = d.name;
+    btn.querySelector(".meta span").textContent =
+      Math.round(d.words / 200) + " min listen" + (pos > 0 ? " · " + pct + "% in" : "");
+    btn.onclick = () => openDoc(d.id);
+    lib.appendChild(btn);
+  }
+  paintUsage();
+}
+
+async function openDoc(id){
+  const rec = await DB.get(id);
+  if(!rec){ toast("That document is missing."); return; }
+  S.doc = rec;
+  S.doc.pos = Math.min(rec.pos || 0, Math.max(0, rec.sentences.length - 1));
+  paintReader();
+  mediaMeta();
+  show("reader");
+  updateSection(S.doc.pos);
+  scrollToSentence(S.doc.pos, false);
+}
+
+/* ================= ingest ================= */
+async function ingestFile(file){
+  clearErr();
+  if(!isPro() && limitHit()){
+    showUpgrade("Your free document is used up",
+      "ReadBack free covers " + FREE_LIMITS.docs + " document. Upgrade to keep adding specs and question packs.");
+    return;
+  }
+  const sizeMB = file.size / (1024 * 1024);
+  if(sizeMB > 40){ toast("That file is over 40 MB. Try a smaller export."); return; }
+
+  const loading = toast("Reading " + file.name + " ...", 12000);
+  try {
+    const { name, ext, blocks } = await extract(file);
+    const id = "d" + Date.now() + Math.floor(Math.random() * 1000);
+    const doc = buildDoc(id, name, ext, blocks);
+    doc.updated = Date.now();
+    await DB.put(doc);
+    if(!isPro()){
+      S.usage.docs = docCount() + 1;
+      save("rb_usage", S.usage);
+    }
+    await refreshLibrary();
+    $("#toast").classList.remove("show");
+    toast("Ready. " + listenLabel(doc.words) + ".");
+    openDoc(id);
+  } catch(err){
+    $("#toast").classList.remove("show");
+    showErr(err && err.message ? err.message : "Could not read that file.");
+  }
+}
+
+async function ingestText(text, name){
+  clearErr();
+  const clean = String(text).trim();
+  if(clean.length < 40){ toast("Paste a bit more text first."); return; }
+  if(!isPro() && limitHit()){
+    showUpgrade("Your free document is used up",
+      "ReadBack free covers " + FREE_LIMITS.docs + " document. Upgrade to keep adding material.");
+    return;
+  }
+  const id = "d" + Date.now();
+  // pasted text may be plain prose or markdown; pick whichever fits
+  const blocks = /^#{1,6}\s/m.test(clean) ? fromMarkdown(clean) : fromPlain(clean);
+  const doc = buildDoc(id, name || "Pasted notes", "paste", blocks);
+  doc.updated = Date.now();
+  await DB.put(doc);
+  if(!isPro()){ S.usage.docs = docCount() + 1; save("rb_usage", S.usage); }
+  await refreshLibrary();
+  toast("Ready. " + listenLabel(doc.words) + ".");
+  openDoc(id);
+}
+
+function showErr(msg){
+  $("#errSlot").innerHTML = '<div class="errbox"></div>';
+  $("#errSlot").querySelector(".errbox").textContent = msg;
+}
+function clearErr(){ $("#errSlot").innerHTML = ""; }
+
+/* ================= reader paint ================= */
+function paintReader(){
+  const d = S.doc;
+  $("#docName").textContent = d.name;
+  const pane = $("#textPane");
+  pane.innerHTML = "";
+  const byBlock = {};
+  d.rendered.forEach((r, i) => { byBlock[i] = r; });
+
+  d.rendered.forEach((r, bi) => {
+    const p = document.createElement("p");
+    p.className = "p k-" + r.kind;
+    p.dataset.block = bi;
+    if(r.kind === "h1" || r.kind === "h2"){
+      // headings get a span too, so they highlight and can be tapped
+      const sp = document.createElement("span");
+      sp.className = "s";
+      sp.dataset.i = r.start;
+      sp.textContent = r.text;
+      sp.onclick = () => { seek(r.start); if(!S.playing) play(); };
+      p.appendChild(sp);
+    } else {
+      if(r.kind === "q"){
+        const tag = document.createElement("span");
+        tag.className = "qtag";
+        tag.textContent = "Q";
+        p.appendChild(tag);
+      }
+      for(let si = r.start; si <= r.end; si++){
+        const sp = document.createElement("span");
+        sp.className = "s";
+        sp.dataset.i = si;
+        sp.textContent = d.sentences[si].t + " ";
+        sp.onclick = () => { seek(si); if(!S.playing) play(); };
+        p.appendChild(sp);
+      }
+    }
+    pane.appendChild(p);
+  });
+  paintProgress();
+  paintRate();
+  paintDrive();
+}
+
+function paintProgress(){
+  const d = S.doc; if(!d) return;
+  const total = d.sentences.length;
+  const pos = S.cur >= 0 ? S.cur : (d.pos || 0);
+  const pct = Math.round((pos / Math.max(1, total - 1)) * 100);
+  $("#pct").textContent = pct + "%";
+  $("#posTxt").textContent = (pos + 1) + " / " + total;
+  $("#progBar").style.width = pct + "%";
+}
+
+function paintRate(){
+  const r = Number(S.settings.rate) || 1;
+  $("#rate").value = r;
+  $("#rateVal").textContent = r.toFixed(2).replace(/0$/, "") + "x";
+}
+
+function paintDrive(){
+  document.body.classList.toggle("driving", !!S.settings.driving);
+  $("#swDrive").classList.toggle("on", !!S.settings.driving);
+  $("#swPause").classList.toggle("on", !!S.settings.qaPause);
+  $("#swLoop").classList.toggle("on", !!S.settings.loop);
+  $("#swWake").classList.toggle("on", !!S.settings.keepAwake);
+  $("#swText").classList.toggle("on", !!S.settings.showText);
+  $("#loopBtn").style.color = S.settings.loop ? "var(--accent)" : "";
+  $("#textPane").style.display = S.settings.showText ? "" : "none";
+}
+
+function highlight(i){
+  const pane = $("#textPane");
+  const on = pane.querySelector(".s.on");
+  if(on) on.classList.remove("on");
+  const spans = pane.querySelectorAll(".s");
+  for(let k = 0; k < spans.length; k++){
+    const sp = spans[k];
+    const idx = Number(sp.dataset.i);
+    sp.classList.toggle("done", idx < i);
+  }
+  const el = pane.querySelector('.s[data-i="' + i + '"]');
+  if(el) el.classList.add("on");
+}
+
+function scrollToSentence(i, smooth){
+  if(!S.settings.showText) return;
+  const el = $("#textPane").querySelector('.s[data-i="' + i + '"]');
+  if(!el) return;
+  const pane = $("#textPane");
+  const top = el.offsetTop - pane.clientHeight * 0.38;
+  pane.scrollTo({ top: Math.max(0, top), behavior: smooth === false ? "auto" : "smooth" });
+}
+
+/* ================= sections ================= */
+function updateSection(i){
+  const d = S.doc; if(!d) return;
+  const s = d.sections.find(x => i >= x.start && i <= x.end) || d.sections[0];
+  S.secStart = s.start; S.secEnd = s.end;
+}
+function nextSectionStart(i){
+  const d = S.doc;
+  const s = d.sections.find(x => i >= x.start && x.end >= i);
+  if(!s) return 0;
+  const k = d.sections.indexOf(s);
+  const nx = d.sections[k + 1];
+  return nx ? nx.start : s.start;
+}
+function prevSectionStart(i){
+  const d = S.doc;
+  const s = d.sections.find(x => i >= x.start && x.end >= i);
+  if(!s) return 0;
+  const k = d.sections.indexOf(s);
+  const pv = d.sections[k - 1];
+  if(pv && i - s.start < 3) return pv.start;
+  return s.start;
+}
+
+/* ================= speech ================= */
+const synth = window.speechSynthesis;
+
+function loadVoices(){
+  if(!synth) return;
+  const all = synth.getVoices() || [];
+  if(!all.length) return;
+  S.voices = all.slice().sort((a, b) => {
+    const en = /^en/i;
+    const ae = en.test(a.lang) ? 0 : 1, be = en.test(b.lang) ? 0 : 1;
+    if(ae !== be) return ae - be;
+    return a.name.localeCompare(b.name);
+  });
+  const sel = $("#voiceSel");
+  const prev = S.settings.voiceURI;
+  sel.innerHTML = "";
+  const seen = new Set();
+  for(const v of S.voices){
+    const key = v.voiceURI || v.name;
+    if(seen.has(key)) continue;
+    seen.add(key);
+    const o = document.createElement("option");
+    o.value = key;
+    o.textContent = v.name + " · " + v.lang + (v.localService ? "" : " · cloud");
+    sel.appendChild(o);
+  }
+  const pick = S.voices.find(v => (v.voiceURI || v.name) === prev)
+            || S.voices.find(v => v.default && /^en/i.test(v.lang))
+            || S.voices.find(v => /^en/i.test(v.lang))
+            || S.voices[0];
+  if(pick){
+    S.settings.voiceURI = pick.voiceURI || pick.name;
+    S.voice = pick;
+    sel.value = S.settings.voiceURI;
+    save("rb_settings", S.settings);
+  }
+}
+if(synth){
+  loadVoices();
+  synth.onvoiceschanged = loadVoices;
+  setTimeout(loadVoices, 350);
+  setTimeout(loadVoices, 1200);
+}
+
+function pauseAfter(s){
+  if(s.head) return 520;
+  if(s.kind === "q") return S.settings.qaPause ? (Number(S.settings.thinkMs) || 5000) : 300;
+  if(s.kind === "a") return 320;
+  return 340;
+}
+
+function speakAt(i){
+  if(!S.doc) return;
+  const d = S.doc;
+  if(i < 0 || i >= d.sentences.length){ finishDoc(); return; }
+  S.cur = i;
+  d.pos = i;
+  // painting must never be able to stop playback
+  try {
+    updateSection(i);
+    highlight(i);
+    scrollToSentence(i);
+    paintProgress();
+  } catch(err){
+    console.error("reader paint failed:", err && err.message);
+  }
+
+  const s = d.sentences[i];
+  const u = new SpeechSynthesisUtterance(s.t);
+  if(S.voice) u.voice = S.voice;
+  u.rate = Number(S.settings.rate) || 1;
+  u.pitch = 1;
+  u.volume = 1;
+  u.lang = (S.voice && S.voice.lang) || "en-US";
+
+  u.onend = () => {
+    if(!S.playing) return;
+    S.timer = setTimeout(() => {
+      if(!S.playing) return;
+      const next = nextIndex(i);
+      if(next === -2){ S.playing = false; paintPlay(); return; }
+      speakAt(next);
+    }, pauseAfter(s));
+  };
+  u.onerror = (ev) => {
+    const e = ev && ev.error ? ev.error : "";
+    if(e === "interrupted" || e === "canceled") return;
+    if(e === "not-allowed"){
+      S.playing = false; paintPlay();
+      toast("The browser blocked audio. Tap play once more.");
+      return;
+    }
+    if(!S.playing) return;
+    S.timer = setTimeout(() => speakAt(nextIndex(i)), 250);
+  };
+  try { synth.speak(u); } catch(e){ toast("Speech failed on this device."); }
+}
+
+function nextIndex(i){
+  const d = S.doc;
+  if(S.settings.loop && S.secEnd > S.secStart && i >= S.secEnd) return S.secStart;
+  if(i + 1 >= d.sentences.length) return -2;
+  return i + 1;
+}
+
+function play(){
+  if(!S.doc) return;
+  if(!synth){ toast("This browser has no speech engine."); return; }
+  if(!isPro() && minutesUsed() >= FREE_LIMITS.minutes){
+    S.playing = false; paintPlay();
+    showUpgrade("You have used your 10 free minutes",
+      "Upgrade to keep listening. Your place in the document is saved.");
+    return;
+  }
+  const from = S.cur >= 0 ? S.cur : (S.doc.pos || 0);
+  S.playing = true;
+  paintPlay();
+  mediaMeta();
+  mediaState();
+  requestWake();
+  S._startedAt = Date.now();
+  synth.cancel();
+  setTimeout(() => { if(S.playing) speakAt(from); }, 40);
+}
+function pause(){
+  S.playing = false;
+  paintPlay();
+  mediaState();
+  clearTimeout(S.timer);
+  try { synth.cancel(); } catch(e){}
+  tickUsage();
+  if(S.doc) DB.put(Object.assign({}, S.doc, { pos: S.cur >= 0 ? S.cur : S.doc.pos, updated: S.doc.updated }));
+}
+function tickUsage(){
+  if(!S._startedAt || isPro()) return;
+  const mins = (Date.now() - S._startedAt) / 60000;
+  S._startedAt = null;
+  if(mins > 0.02) addMinutes(mins);
+}
+function paintPlay(){
+  const ico = $("#playIcon");
+  if(S.playing){
+    ico.innerHTML = '<path d="M7 4h4v16H7zM14 4h4v16h-4z"/>';
+  } else {
+    ico.innerHTML = '<path d="M7 4l13 8-13 8z"/>';
+  }
+  $("#playBtn").setAttribute("aria-label", S.playing ? "Pause" : "Play");
+}
+function finishDoc(){
+  S.playing = false;
+  paintPlay();
+  tickUsage();
+  S.cur = S.doc ? S.doc.sentences.length - 1 : 0;
+  paintProgress();
+  toast("End of document.");
+  if(S.doc) DB.put(Object.assign({}, S.doc, { pos: S.cur, updated: Date.now() }));
+}
+function seek(i){
+  clearTimeout(S.timer);
+  const was = S.playing;
+  try { synth.cancel(); } catch(e){}
+  S.cur = i;
+  if(S.doc) S.doc.pos = i;
+  updateSection(i);
+  highlight(i);
+  scrollToSentence(i);
+  paintProgress();
+  if(was){ setTimeout(() => speakAt(i), 40); }
+}
+
+/* ================= wake lock ================= */
+async function requestWake(){
+  if(!S.settings.keepAwake) return;
+  if(!("wakeLock" in navigator)) return;
+  try {
+    S.wakeLock = await navigator.wakeLock.request("screen");
+    S.wakeLock.addEventListener("release", () => { S.wakeLock = null; });
+  } catch(e){}
+}
+function releaseWake(){
+  if(S.wakeLock){ try { S.wakeLock.release(); } catch(e){} S.wakeLock = null; }
+}
+document.addEventListener("visibilitychange", () => {
+  if(document.visibilityState === "visible" && S.playing) requestWake();
+});
+
+/* ================= media session: car stereo and lock screen ================= */
+/* This is what lets the steering wheel buttons and the car screen drive
+   ReadBack, which is the whole point of a listening app. */
+function mediaMeta(){
+  if(!("mediaSession" in navigator) || !S.doc) return;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: S.doc.name, artist: "ReadBack", album: "Interview prep"
+    });
+  } catch(e){}
+}
+function mediaState(){
+  if(!("mediaSession" in navigator)) return;
+  try { navigator.mediaSession.playbackState = S.playing ? "playing" : "paused"; } catch(e){}
+}
+const at = (delta) => {
+  const total = S.doc ? S.doc.sentences.length : 1;
+  return Math.max(0, Math.min(total - 1, (S.cur < 0 ? 0 : S.cur) + delta));
+};
+function wireMediaSession(){
+  if(!("mediaSession" in navigator)) return;
+  const handlers = {
+    play: () => { if(!S.playing) play(); },
+    pause: () => pause(),
+    stop: () => pause(),
+    nexttrack: () => seek(at(1)),
+    previoustrack: () => seek(at(-1)),
+    seekforward: () => seek(at(5)),
+    seekbackward: () => seek(at(-5))
+  };
+  for(const k in handlers){
+    try { navigator.mediaSession.setActionHandler(k, handlers[k]); } catch(e){}
+  }
+}
+
+/* ================= navigation ================= */
+function show(which){
+  $("#screenUpload").classList.toggle("hidden", which !== "upload");
+  $("#screenReader").classList.toggle("hidden", which !== "reader");
+}
+function openSheet(id){
+  closeSheets();
+  $("#scrim").classList.add("show");
+  $(id).classList.add("show");
+}
+function closeSheets(){
+  $$(".sheet").forEach(s => s.classList.remove("show"));
+  $("#scrim").classList.remove("show");
+}
+
+/* ================= upgrade ================= */
+const PLANS = [
+  { name: "Pro", price: "$7.99", per: "per month", best: true,
+    items: ["Unlimited documents", "Unlimited listening", "Premium voice support",
+            "Interview pause mode", "Offline library", "Saved positions across devices"],
+    no: ["Premium voice minutes billed separately"] },
+  { name: "Interview Sprint", price: "$19", per: "one time, 30 days", best: false,
+    items: ["Everything in Pro for 30 days", "Built for a single interview loop",
+            "Best value if you have one round coming up"], no: [] },
+  { name: "Free", price: "$0", per: "forever", best: false,
+    items: ["1 document in your library", "10 minutes of listening", "Device voices",
+            "Driving mode, sections, repeat"], no: ["Premium studio voices", "Unlimited documents"] }
+];
+
+function paintUpgrade(){
+  const list = $("#planList");
+  list.innerHTML = "";
+  for(const p of PLANS){
+    const el = document.createElement("div");
+    el.className = "plan" + (p.best ? " best" : "");
+    const tag = p.best ? '<div class="tag">Most popular</div>' : "";
+    const items = p.items.map(i => '<li>' + i + '</li>').join("") +
+                  (p.no || []).map(i => '<li class="no">' + i + '</li>').join("");
+    el.innerHTML = tag + '<h3>' + p.name + '</h3>' +
+      '<div class="price">' + p.price + ' <small>' + p.per + '</small></div>' +
+      '<ul>' + items + '</ul>' +
+      '<button class="btn ' + (p.best ? 'primary' : 'ghost') + ' wide">' +
+      (p.name === "Free" ? "Current plan" : "Choose " + p.name) + '</button>';
+    const btn = el.querySelector("button");
+    if(p.name === "Free") btn.disabled = true;
+    else btn.onclick = () => demoPurchase(p.name);
+    list.appendChild(el);
+  }
+  const box = $("#usageBox");
+  const used = minutesUsed();
+  const pct = Math.min(100, Math.round((used / FREE_LIMITS.minutes) * 100));
+  box.innerHTML = '<div class="u1"><span>Listening used this month</span><b>' +
+    used.toFixed(1) + ' / ' + FREE_LIMITS.minutes + ' min</b></div>' +
+    '<div class="bar"><i style="width:' + pct + '%"></i></div>';
+}
+
+function showUpgrade(title, sub){
+  pause();
+  $("#upTitle").textContent = title || "Read more of your prep";
+  $("#upSub").textContent = sub || "Upgrade to keep listening.";
+  paintUpgrade();
+  openSheet("#sheetUpgrade");
+}
+function demoPurchase(name){
+  // placeholder until a payment provider is connected
+  S.pro = true;
+  save("rb_pro", true);
+  paintPlan();
+  paintUsage();
+  toast(name + " unlocked on this device.");
+  closeSheets();
+}
+
+/* ================= wiring ================= */
+function init(){
+  paintPlan();
+  paintUsage();
+  paintDrive();
+  paintRate();
+  wireMediaSession();
+  refreshLibrary();
+
+  $("#planPill").onclick = () => { showUpgrade("Plans", "Pick what fits your search."); };
+  $("#closeUp").onclick = closeSheets;
+  $("#scrim").onclick = closeSheets;
+
+  // file input + drag and drop
+  const fileInput = $("#file");
+  fileInput.onchange = () => {
+    const files = Array.from(fileInput.files || []);
+    files.forEach(f => ingestFile(f));
+    fileInput.value = "";
+  };
+  const drop = $("#drop");
+  ["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault(); drop.classList.add("over");
+  }));
+  ["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault(); drop.classList.remove("over");
+  }));
+  drop.addEventListener("drop", e => {
+    const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
+    files.forEach(f => ingestFile(f));
+  });
+  window.addEventListener("dragover", e => e.preventDefault());
+  window.addEventListener("drop", e => {
+    if(e.target.closest && e.target.closest("#drop")) return;
+    e.preventDefault();
+    const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
+    files.forEach(f => ingestFile(f));
+  });
+
+  // paste flow
+  $("#pasteGo").onclick = () => {
+    const v = $("#pasteBox").value;
+    ingestText(v, "Pasted notes").then(() => { $("#pasteBox").value = ""; });
+  };
+  $("#fillSample").onclick = (e) => {
+    e.preventDefault();
+    $("#pasteBox").value = SAMPLE;
+    toast("Sample pack loaded. Tap Turn into audio.");
+  };
+
+  // reader controls
+  $("#backBtn").onclick = () => { pause(); show("upload"); refreshLibrary(); };
+  $("#playBtn").onclick = () => { S.playing ? pause() : play(); };
+  $("#prevBtn").onclick = () => {
+    const d = S.doc; if(!d) return;
+    const cur = S.cur >= 0 ? S.cur : 0;
+    seek(Math.max(0, cur - 1));
+  };
+  $("#nextBtn").onclick = () => {
+    const d = S.doc; if(!d) return;
+    const cur = S.cur >= 0 ? S.cur : 0;
+    seek(Math.min(d.sentences.length - 1, cur + 1));
+  };
+  $("#loopBtn").onclick = () => {
+    S.settings.loop = !S.settings.loop;
+    save("rb_settings", S.settings);
+    paintDrive();
+    toast(S.settings.loop ? "Repeating this section." : "Repeat off.");
+  };
+  $("#driveBtn").onclick = () => {
+    S.settings.driving = !S.settings.driving;
+    save("rb_settings", S.settings);
+    paintDrive();
+    toast(S.settings.driving ? "Driving mode on." : "Driving mode off.");
+  };
+  $("#rate").oninput = (e) => {
+    S.settings.rate = Number(e.target.value);
+    $("#rateVal").textContent = S.settings.rate.toFixed(2).replace(/0$/, "") + "x";
+    save("rb_settings", S.settings);
+    if(S.playing){
+      // restart current sentence at the new speed
+      const at = S.cur;
+      clearTimeout(S.timer);
+      try { synth.cancel(); } catch(e){}
+      setTimeout(() => { if(S.playing) speakAt(at); }, 40);
+    }
+  };
+
+  // settings sheet
+  $("#settingsBtn").onclick = () => {
+    $("#voiceSel").value = S.settings.voiceURI;
+    $("#thinkSec").value = String(S.settings.thinkMs);
+    $("#elKey").value = S.settings.elKey || "";
+    $("#elVoice").value = S.settings.elVoice || "";
+    paintDrive();
+    openSheet("#sheetSettings");
+  };
+  $("#voiceSel").onchange = (e) => {
+    const key = e.target.value;
+    S.settings.voiceURI = key;
+    S.voice = S.voices.find(v => (v.voiceURI || v.name) === key) || null;
+    save("rb_settings", S.settings);
+  };
+  $("#thinkSec").onchange = (e) => {
+    S.settings.thinkMs = Number(e.target.value);
+    save("rb_settings", S.settings);
+  };
+  $("#swDrive").onclick = () => { S.settings.driving = !S.settings.driving; save("rb_settings", S.settings); paintDrive(); };
+  $("#swPause").onclick = () => { S.settings.qaPause = !S.settings.qaPause; save("rb_settings", S.settings); paintDrive(); };
+  $("#swLoop").onclick = () => { S.settings.loop = !S.settings.loop; save("rb_settings", S.settings); paintDrive(); };
+  $("#swWake").onclick = () => {
+    S.settings.keepAwake = !S.settings.keepAwake;
+    save("rb_settings", S.settings); paintDrive();
+    S.settings.keepAwake ? requestWake() : releaseWake();
+  };
+  $("#swText").onclick = () => { S.settings.showText = !S.settings.showText; save("rb_settings", S.settings); paintDrive(); };
+  $("#saveEl").onclick = () => {
+    S.settings.elKey = $("#elKey").value.trim();
+    S.settings.elVoice = $("#elVoice").value.trim();
+    save("rb_settings", S.settings);
+    $("#elNote").innerHTML = S.settings.elKey
+      ? "Key saved in this browser only. Premium voice rendering runs through the ElevenLabs API, so each document you listen to with it is billed to that key."
+      : "No key saved. Device voices are used.";
+  };
+
+  // outline
+  $("#outlineBtn").onclick = () => {
+    const list = $("#outlineList");
+    list.innerHTML = "";
+    const d = S.doc; if(!d) return;
+    d.sections.forEach((s, k) => {
+      const b = document.createElement("button");
+      b.className = "oi";
+      b.innerHTML = '<span class="n">' + String(k + 1).padStart(2, "0") + '</span><b></b>';
+      b.querySelector("b").textContent = s.title;
+      b.onclick = () => { closeSheets(); seek(s.start); };
+      list.appendChild(b);
+    });
+    openSheet("#sheetOutline");
+  };
+
+  // keyboard, handy on a laptop
+  window.addEventListener("keydown", e => {
+    if(e.target.matches("input,textarea,select")) return;
+    if(!S.doc) return;
+    if(e.code === "Space"){ e.preventDefault(); S.playing ? pause() : play(); }
+    if(e.code === "ArrowRight"){ e.preventDefault(); seek(Math.min(S.doc.sentences.length - 1, S.cur + 1)); }
+    if(e.code === "ArrowLeft"){ e.preventDefault(); seek(Math.max(0, S.cur - 1)); }
+  });
+
+  window.addEventListener("beforeunload", () => {
+    if(S.doc && S.cur >= 0){
+      S.doc.pos = S.cur;
+      try { DB.put(Object.assign({}, S.doc, { updated: S.doc.updated })); } catch(e){}
+    }
+  });
+}
+
+const SAMPLE = "# Interview pack: Senior Product Manager, fintech\n\n" +
+"## Opening\n\n" +
+"Tell me about yourself.\n" +
+"Keep it to ninety seconds. Current role in one line, the two achievements that prove fit, " +
+"and why this company specifically. Do not recite a CV.\n\n" +
+"Why this company?\n" +
+"Name something they shipped in the last six months and connect it to a problem you have " +
+"solved. Generic praise is the fastest way to lose the room.\n\n" +
+"## Behavioural\n\n" +
+"Tell me about a time you shipped something that failed.\n" +
+"Own the decision, name the signal you ignored, and describe what changed afterwards. " +
+"Interviewers are listening for whether you separate your judgement from your ego.\n\n" +
+"How do you decide what not to build?\n" +
+"Start from the cost of saying yes. Every feature is a maintenance contract and a support " +
+"burden. Rank by reversibility first, then by how expensive the mistake is to undo.\n\n" +
+"## Your questions\n\n" +
+"What does success look like at six months, and what is the thing most likely to stop it?\n" +
+"Ask this last. Their answer tells you whether the role is set up to succeed or set up to fail.";
+
+/* ---------- boot ---------- */
+window.addEventListener("load", () => {
+  init();
+  // expose a small handle for automated checks
+  window.__rb = {
+    extract: (file) => extract(file),
+    buildDoc, splitSentences, fromPlain, classify,
+    state: S, DB
+  };
+});
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("service-worker.js").catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
