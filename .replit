@@ -1,0 +1,14 @@
+# Replit. Import the repo, then set these under Secrets:
+#   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_SPRINT,
+#   STRIPE_PRICE_PRO_MONTHLY, STRIPE_PRICE_PRO_YEARLY, ELEVENLABS_API_KEY,
+#   PUBLIC_BASE, ALLOWED_ORIGINS, ADMIN_TOKEN
+# Until STRIPE_SECRET_KEY is set, the service runs in test checkout mode and the
+# whole buy loop works without a Stripe account.
+run = "cd server && npm install && npm start"
+entrypoint = "server/start.js"
+
+[nix]
+channel = "stable-24_05"
+
+[nix.packages]
+nodejs = "22"

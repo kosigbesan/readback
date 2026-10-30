@@ -52,6 +52,14 @@ Payments and the premium voice cannot live in the browser, so there is a small N
 in `server/`. It holds the Stripe integration, decides which plan a device is on, and proxies
 the voice so no API key is ever shipped to the phone. See `server/README.md`.
 
+**You do not need a Stripe account to see the whole thing work.** While no Stripe key is set,
+the service serves its own test checkout. Pressing Buy in the app opens a page that says no
+card is charged, and completing it really does upgrade the device. Set `STRIPE_SECRET_KEY` and
+those routes stop existing, so real Checkout takes over and nobody can give away a paid plan.
+
+Deploy configs are already in the repo: `render.yaml` for a Render Blueprint, `.replit` for
+Replit, and `server/Dockerfile` plus `server/Procfile` for anything that runs containers.
+
 **Without a service connected the app still works.** It runs on device voices, purchases
 unlock locally and say so plainly, and it never pretends a payment happened. Connect a
 service URL in Setup and the same buttons become real Stripe Checkout.

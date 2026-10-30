@@ -376,6 +376,77 @@ console.log("\n--- cross origin, for the Pages app ---");
   eq("preflight is answered", pre.status, 204);
 }
 
+console.log("\n--- test checkout, so the loop works before Stripe exists ---");
+{
+  const demoStore = memoryStore();
+  const demoApp = createApp({
+    store: demoStore, stripe: null,
+    cfg: {
+      demoCheckout: true,
+      publicBase: "https://kosigbesan.github.io/readback",
+      webhookSecret: WEBHOOK_SECRET, elevenKey: "k",
+      elevenBase: "http://127.0.0.1:" + upstreamPort
+    }
+  });
+  const ds = demoApp.listen(0, "127.0.0.1");
+  await new Promise((r) => ds.once("listening", r));
+  const dBase = "http://127.0.0.1:" + ds.address().port;
+
+  const h = await api("/api/health", {}, dBase);
+  eq("health advertises the test checkout", h.body.demoCheckout, true);
+
+  const co = await api("/api/checkout", { body: { deviceId: "demo-device", planId: "sprint" } }, dBase);
+  eq("checkout succeeds with no Stripe account", co.status, 200);
+  eq("and is flagged as a test", co.body.demo, true);
+  ok("the url is absolute, not relative to the app origin", co.body.url.indexOf(dBase + "/demo/checkout") === 0, co.body.url);
+  ok("and carries the device", co.body.url.indexOf("deviceId=demo-device") > -1, co.body.url);
+
+  const pageRes = await fetch(co.body.url);
+  const html = await pageRes.text();
+  eq("the test checkout page serves", pageRes.status, 200);
+  ok("and says no card is charged", /no card charged/i.test(html), html.slice(0, 60));
+  ok("and names the plan", /Interview Sprint/.test(html));
+
+  const done = await fetch(dBase + "/demo/complete", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: "deviceId=demo-device&planId=sprint",
+    redirect: "manual"
+  });
+  eq("completing it redirects", done.status, 303);
+  ok("back to the app with the paid flag", /paid=1/.test(done.headers.get("location") || ""), done.headers.get("location"));
+
+  const lic = await api("/api/licence", { body: { deviceId: "demo-device" } }, dBase);
+  eq("the device is really upgraded", lic.body.licence.plan, "sprint");
+  eq("with the voice allowance attached", lic.body.licence.voiceCharsPerMonth, 60000);
+
+  // a bad plan must not create a free pass
+  const bad = await api("/demo/complete", { method: "POST", body: { deviceId: "demo-device", planId: "nothing" } }, dBase);
+  eq("an unknown plan is refused", bad.status, 400);
+
+  // and with a real Stripe key present, the test checkout must vanish entirely
+  const withStripe = createApp({
+    store: demoStore, stripe: stripeStub,
+    cfg: { demoCheckout: true, webhookSecret: WEBHOOK_SECRET, prices: { sprint: "price_sprint_test" } }
+  });
+  const ws = withStripe.listen(0, "127.0.0.1");
+  await new Promise((r) => ws.once("listening", r));
+  const wBase = "http://127.0.0.1:" + ws.address().port;
+  const hh = await api("/api/health", {}, wBase);
+  eq("test checkout reports off once Stripe is configured", hh.body.demoCheckout, false);
+  const gone = await fetch(wBase + "/demo/checkout?deviceId=x&planId=sprint");
+  eq("the test page is gone", gone.status, 404);
+  const gonePost = await fetch(wBase + "/demo/complete", {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: "deviceId=x&planId=pro", redirect: "manual"
+  });
+  eq("and cannot be posted to either", gonePost.status, 404);
+  const real = await api("/api/checkout", { body: { deviceId: "demo-device", planId: "sprint" } }, wBase);
+  ok("real Stripe Checkout takes over", /checkout\.stripe\.com/.test(real.body.url), real.body.url);
+  ws.close();
+  ds.close();
+}
+
 /* ---------------- done ---------------- */
 server.close(); noStripeServer.close(); limitedServer.close();
 await new Promise((r) => upstream.close(r));

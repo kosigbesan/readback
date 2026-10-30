@@ -28,7 +28,11 @@ export function createApp({ store, stripe = null, cfg = {} }) {
     maxCharsPerRequest: cfg.maxCharsPerRequest || 1200,
     ttsPerMinute: cfg.ttsPerMinute || 40,
     adminToken: cfg.adminToken || null,
-    prices: cfg.prices || {}
+    prices: cfg.prices || {},
+    // Lets the whole buy loop be walked through with no Stripe account. Only
+    // ever active when no real Stripe key is present, so it cannot be used to
+    // give away paid plans in production.
+    demoCheckout: !!cfg.demoCheckout
   };
 
   const app = express();
@@ -71,6 +75,9 @@ export function createApp({ store, stripe = null, cfg = {} }) {
   }));
 
   app.use(express.json({ limit: "256kb" }));
+  app.use(express.urlencoded({ extended: false }));
+
+  const demoMode = () => config.demoCheckout && !stripe;
 
   /* ---------- health: says what is wired up, never leaks a key ---------- */
   app.get("/api/health", (req, res) => {
@@ -81,6 +88,7 @@ export function createApp({ store, stripe = null, cfg = {} }) {
       stripe: !!stripe,
       webhooks: !!config.webhookSecret,
       voice: !!config.elevenKey,
+      demoCheckout: demoMode(),
       plans: Object.keys(PLANS).length,
       time: new Date().toISOString()
     });
@@ -117,6 +125,12 @@ export function createApp({ store, stripe = null, cfg = {} }) {
     if (!plan) return res.status(400).json({ error: "Unknown plan" });
     if (plan.mode === "free") return res.status(400).json({ error: "The free plan does not need checkout" });
     if (!stripe) {
+      if (demoMode()) {
+        // no Stripe yet, so hand back the built in test checkout instead of an error
+        const q = "?deviceId=" + encodeURIComponent(deviceId) + "&planId=" + encodeURIComponent(plan.id);
+        // absolute, because the app is served from a different origin
+        return res.json({ url: selfBase(req) + "/demo/checkout" + q, id: "demo_" + plan.id, demo: true });
+      }
       return res.status(503).json({
         error: "Payments are not configured yet. Set STRIPE_SECRET_KEY on the server.",
         code: "no_stripe"
@@ -144,6 +158,28 @@ export function createApp({ store, stripe = null, cfg = {} }) {
         : undefined
     });
     res.json({ url: session.url, id: session.id });
+  }));
+
+  /* ---------- a test checkout, so the loop can be walked end to end ----------
+     Only exists when DEMO_CHECKOUT is on and no Stripe key is set. It charges
+     nothing and says so on the page. Set a real Stripe key and these routes
+     disappear, so this can never hand out paid plans by accident. */
+  app.get("/demo/checkout", (req, res) => {
+    if (!demoMode()) return res.status(404).send("Not found");
+    const planId = String(req.query.planId || "");
+    const deviceId = cleanId(req.query.deviceId);
+    const plan = PLANS[planId];
+    if (!plan || !deviceId) return res.status(400).send("Bad plan or device");
+    res.type("html").send(demoCheckoutPage(plan, deviceId, config.publicBase));
+  });
+
+  app.post("/demo/complete", wrap(async (req, res) => {
+    if (!demoMode()) return res.status(404).json({ error: "Not found" });
+    const deviceId = cleanId(req.body && req.body.deviceId);
+    const planId = String((req.body && req.body.planId) || "");
+    const licence = await activate(deviceId, planId, {});
+    if (!licence) return res.status(400).json({ error: "Unknown plan or device" });
+    res.redirect(303, config.publicBase + "/?paid=1&plan=" + encodeURIComponent(planId) + "&demo=1");
   }));
 
   /* ---------- device voices are free, premium ones are metered ---------- */
@@ -270,6 +306,23 @@ export function createApp({ store, stripe = null, cfg = {} }) {
     return licence;
   }
 
+  /* One place that turns a plan into a licence, used by both the Stripe webhook
+     and the test checkout, so the two can never drift apart. */
+  async function activate(deviceId, planId, opts) {
+    const plan = PLANS[planId];
+    if (!deviceId || !plan) return null;
+    opts = opts || {};
+    const licence = await ensureLicence(deviceId);
+    licence.plan = plan.id;
+    if (opts.email) licence.email = opts.email;
+    if (opts.customer) licence.stripeCustomerId = opts.customer;
+    licence.stripeSubscriptionId = opts.subscription || null;
+    licence.cancelAtPeriodEnd = false;
+    licence.expiresAt = plan.mode === "payment" ? Date.now() + plan.durationDays * 864e5 : null;
+    await store.putLicence(licence);
+    return licence;
+  }
+
   /* Apply a verified Stripe event to a licence. Pure enough to unit test. */
   async function applyEvent(event) {
     const type = event.type;
@@ -278,17 +331,13 @@ export function createApp({ store, stripe = null, cfg = {} }) {
     if (type === "checkout.session.completed") {
       const deviceId = cleanId((obj.metadata && obj.metadata.deviceId) || obj.client_reference_id);
       const planId = obj.metadata && obj.metadata.planId;
-      const plan = PLANS[planId];
-      if (!deviceId || !plan) return "ignored: no device or plan on the session";
-      const licence = await ensureLicence(deviceId);
-      licence.plan = plan.id;
-      licence.email = obj.customer_details ? obj.customer_details.email || licence.email : licence.email;
-      licence.stripeCustomerId = typeof obj.customer === "string" ? obj.customer : licence.stripeCustomerId;
-      licence.stripeSubscriptionId = typeof obj.subscription === "string" ? obj.subscription : null;
-      licence.cancelAtPeriodEnd = false;
-      licence.expiresAt = plan.mode === "payment" ? Date.now() + plan.durationDays * 864e5 : null;
-      await store.putLicence(licence);
-      return "activated " + plan.id;
+      const licence = await activate(deviceId, planId, {
+        email: obj.customer_details ? obj.customer_details.email : null,
+        customer: typeof obj.customer === "string" ? obj.customer : null,
+        subscription: typeof obj.subscription === "string" ? obj.subscription : null
+      });
+      if (!licence) return "ignored: no device or plan on the session";
+      return "activated " + licence.plan;
     }
 
     if (type === "customer.subscription.updated" || type === "customer.subscription.deleted") {
@@ -327,4 +376,58 @@ function cleanId(v) {
   const s = String(v == null ? "" : v).trim();
   if (!s || s.length > 80) return null;
   return /^[A-Za-z0-9._:-]+$/.test(s) ? s : null;
+}
+
+/* The public address of this service as the caller sees it, which matters
+   behind a tunnel or a proxy. */
+function selfBase(req) {
+  const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost";
+  const proto = req.headers["x-forwarded-proto"] || (req.secure ? "https" : "http");
+  return proto + "://" + host;
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function demoCheckoutPage(plan, deviceId, publicBase) {
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Test checkout: ${esc(plan.name)}</title>
+<style>
+  :root{--ink:#12100d;--paper:#f4f0e7;--accent:#e8a33d;--mute:#9a917f;--line:rgba(244,240,231,.16)}
+  body{margin:0;background:var(--ink);color:var(--paper);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+  .card{max-width:400px;width:100%;border:1px solid var(--line);border-radius:16px;padding:26px}
+  .flag{display:inline-block;font:600 10px/1 ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;
+        color:#1a1408;background:var(--accent);padding:5px 9px;border-radius:5px;margin-bottom:16px}
+  h1{font-size:15px;margin:0 0 4px;font-weight:600}
+  .price{font-family:Georgia,serif;font-size:34px;letter-spacing:-.03em;margin:10px 0 4px}
+  .per{color:var(--mute);font-size:13px}
+  p{color:var(--mute);font-size:13px;line-height:1.6}
+  button{width:100%;margin-top:18px;padding:15px;border:0;border-radius:11px;background:var(--accent);
+         color:#1a1408;font:600 15px/1 inherit;cursor:pointer}
+  button:active{transform:scale(.99)}
+  .fine{font-size:11.5px;color:var(--mute);margin-top:14px;border-top:1px solid var(--line);padding-top:14px}
+  code{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--paper);word-break:break-all}
+</style></head>
+<body><div class="card">
+  <div class="flag">Test mode, no card charged</div>
+  <h1>${esc(plan.name)}</h1>
+  <div class="price">${esc(plan.priceLabel)}</div>
+  <div class="per">${plan.mode === "payment" ? "One payment, then it lapses on its own." : "Billed until you cancel."}</div>
+  <p>This is the built in test checkout. It exists so the whole purchase loop can be walked
+     through before a Stripe account is connected. Nothing is charged, and the plan it grants
+     is real on this device.</p>
+  <form method="POST" action="/demo/complete">
+    <input type="hidden" name="deviceId" value="${esc(deviceId)}">
+    <input type="hidden" name="planId" value="${esc(plan.id)}">
+    <button type="submit">Complete test purchase</button>
+  </form>
+  <div class="fine">
+    The moment you set <code>STRIPE_SECRET_KEY</code> on this service, this page stops
+    existing and real Checkout takes over. Device <code>${esc(deviceId)}</code>.
+  </div>
+</div></body></html>`;
 }

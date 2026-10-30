@@ -25,6 +25,9 @@ const app = createApp({
     elevenBase: process.env.ELEVENLABS_BASE || "https://api.elevenlabs.io",
     allowedOrigins: (process.env.ALLOWED_ORIGINS || "*").split(",").map((s) => s.trim()).filter(Boolean),
     adminToken: process.env.ADMIN_TOKEN || null,
+    // on by default only while there is no Stripe key, so the buy loop can be
+    // walked through without one
+    demoCheckout: process.env.DEMO_CHECKOUT === "1" || !stripe,
     prices: {
       sprint: process.env.STRIPE_PRICE_SPRINT || null,
       pro: process.env.STRIPE_PRICE_PRO_MONTHLY || null,
@@ -41,5 +44,6 @@ app.listen(port, () => {
   console.log("  webhooks   " + on(!!process.env.STRIPE_WEBHOOK_SECRET));
   console.log("  voice      " + on(!!process.env.ELEVENLABS_API_KEY));
   console.log("  admin      " + on(!!process.env.ADMIN_TOKEN));
-  if (!stripe) console.log("\n  Set STRIPE_SECRET_KEY to start taking money. See .env.example.");
+  console.log("  test       " + on(!!process.env.DEMO_CHECKOUT || !stripe) + " (checkout without Stripe)");
+  if (!stripe) console.log("\n  Set STRIPE_SECRET_KEY to take real money. See .env.example.");
 });

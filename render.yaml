@@ -1,0 +1,35 @@
+# One click deploy on Render. Blueprint this repo and it reads this file.
+# Set the secrets marked sync:false in the Render dashboard after the first deploy.
+services:
+  - type: web
+    name: readback-api
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node start.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: PUBLIC_BASE
+        value: https://kosigbesan.github.io/readback
+      - key: ALLOWED_ORIGINS
+        value: https://kosigbesan.github.io
+      # leave the test checkout on until real Stripe keys are added
+      - key: DEMO_CHECKOUT
+        value: "1"
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_SPRINT
+        sync: false
+      - key: STRIPE_PRICE_PRO_MONTHLY
+        sync: false
+      - key: STRIPE_PRICE_PRO_YEARLY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
