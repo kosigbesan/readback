@@ -447,21 +447,38 @@ select:focus,input:focus{outline:none;border-color:rgba(232,163,61,.5)}
     </select>
   </div>
 
+  <div class="field" style="margin-top:20px">
+    <label for="engineSel">Voice</label>
+    <select id="engineSel">
+      <option value="browser">Device voice, free and unlimited</option>
+      <option value="eleven">Premium voice, sounds like a person</option>
+    </select>
+  </div>
+
   <div style="border-top:1px solid var(--line2);margin-top:22px;padding-top:18px">
-    <h2 style="font-size:17px">Premium voice</h2>
-    <p class="shsub" style="margin-bottom:12px">Use an ElevenLabs key for studio quality audio.
-      Your key stays in this browser.</p>
+    <h2 style="font-size:17px">ReadBack service</h2>
+    <p class="shsub" style="margin-bottom:12px">Connect the service to take payments and to
+      render the premium voice without shipping a key inside the app. Leave it empty and the
+      app still works, on device voices.</p>
     <div class="field">
+      <label for="apiBase">Service URL</label>
+      <input type="text" id="apiBase" placeholder="https://your-app.replit.app" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="elVoice">Premium voice id</label>
+      <input type="text" id="elVoice" placeholder="21m00Tcm4TlvDq8ikWAM" autocomplete="off">
+    </div>
+    <p class="note" id="svcNote"></p>
+  </div>
+
+  <details style="margin-top:18px">
+    <summary class="shsub" style="cursor:pointer;color:var(--accent)">Or use your own ElevenLabs key</summary>
+    <div class="field" style="margin-top:12px">
       <label for="elKey">ElevenLabs API key</label>
       <input type="password" id="elKey" placeholder="sk_..." autocomplete="off">
     </div>
-    <div class="field">
-      <label for="elVoice">ElevenLabs voice ID</label>
-      <input type="text" id="elVoice" placeholder="21m00Tcm4TlvDq8ikWAM" autocomplete="off">
-    </div>
-    <button class="btn ghost wide" id="saveEl">Save premium voice</button>
-    <p class="note" id="elNote"></p>
-  </div>
+    <p class="note" id="elNote">Only needed if the service is not connected. It stays in this browser.</p>
+  </details>
 </div>
 
 <!-- outline sheet -->
@@ -496,7 +513,8 @@ if(window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdf.worker
 /* ================= state ================= */
 const DEFAULT_SETTINGS = {
   rate: 1, voiceURI: "", driving: false, qaPause: true, loop: false,
-  keepAwake: true, showText: true, thinkMs: 5000, elKey: "", elVoice: ""
+  keepAwake: true, showText: true, thinkMs: 5000,
+  engine: "browser", apiBase: "", elKey: "", elVoice: ""
 };
 const FREE_LIMITS = { docs: 1, minutes: 10 };
 
@@ -512,7 +530,13 @@ const S = {
   voices: [],
   wakeLock: null,
   secStart: 0,
-  secEnd: 0
+  secEnd: 0,
+  L: null,            // licence as reported by the service
+  licenceSource: "local",
+  voiceCharsLeft: null,
+  audio: null,        // premium voice playback
+  audioUrl: null,
+  gen: 0
 };
 
 function load(k, d){
@@ -532,6 +556,56 @@ function fmt(n){ return n.toLocaleString("en-US"); }
 function listenLabel(words){
   const m = Math.max(1, Math.round(words / 200));
   return m + (m === 1 ? " minute" : " minutes") + " of listening";
+}
+
+/* ================= the service, and the licence it hands back =================
+   The app has to keep working with no signal, so whatever the service last
+   said is cached and reused offline. The client licence is only a hint for the
+   interface: the service is what enforces the plan, because it is the thing
+   that gets billed for the voice. */
+function deviceId(){
+  let d = null;
+  try { d = localStorage.getItem("rb_device"); } catch(e){}
+  if(!d){
+    d = "dev_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    try { localStorage.setItem("rb_device", d); } catch(e){}
+  }
+  return d;
+}
+function apiUrl(path){
+  const base = String(S.settings.apiBase || "").trim().replace(/\/+$/, "");
+  return base ? base + path : "";
+}
+const serviceOn = () => !!String(S.settings.apiBase || "").trim();
+
+async function refreshLicence(){
+  if(!serviceOn()){ S.licenceSource = "local"; S.L = null; return; }
+  try {
+    const r = await fetch(apiUrl("/api/licence"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId: deviceId() })
+    });
+    if(!r.ok) throw new Error("licence HTTP " + r.status);
+    const j = await r.json();
+    S.L = j.licence;
+    S.pro = j.licence.plan !== "free";
+    S.licenceSource = "server";
+    save("rb_licence_cache", { at: Date.now(), L: j.licence });
+    save("rb_pro", S.pro);
+  } catch(e){
+    // no signal is normal in a car, so fall back to the last licence we saw
+    const cached = load("rb_licence_cache", null);
+    if(cached && cached.L && cached.L.plan && cached.L.plan !== "free"){
+      S.L = cached.L; S.pro = true; S.licenceSource = "cached";
+    } else {
+      S.licenceSource = "offline";
+    }
+    console.log("licence refresh skipped: " + (e && e.message ? e.message : e));
+  }
+  // repaint here rather than trusting every caller to remember
+  paintPlan();
+  paintUsage();
 }
 
 /* ================= IndexedDB for document bodies ================= */
@@ -1031,15 +1105,32 @@ function addMinutes(mins){
 }
 function paintUsage(){
   const line = $("#usageLine");
-  if(isPro()){ line.textContent = "Pro"; return; }
+  if(isPro()){ line.textContent = S.L && S.L.plan === "sprint" ? "Sprint pass" : "Pro"; return; }
   line.textContent = minutesLeft().toFixed(0) + " of " + FREE_LIMITS.minutes + " min left";
-  $("#planPill").textContent = "Free";
-  $("#planPill").classList.remove("pro");
 }
 function paintPlan(){
   const p = $("#planPill");
-  if(isPro()){ p.textContent = "Pro"; p.classList.add("pro"); }
-  else { p.textContent = "Free"; p.classList.remove("pro"); }
+  const sprint = !!(S.L && S.L.plan === "sprint");
+  p.textContent = isPro() ? (sprint ? "Sprint" : "Pro") : "Free";
+  p.classList.toggle("pro", isPro());
+
+  const note = $("#svcNote");
+  if(!note) return;
+  if(!serviceOn()){
+    note.textContent = "Not connected. Device voices only, and purchases stay on this device.";
+  } else if(S.licenceSource === "server"){
+    let s = "Connected. Plan: " + ((S.L && S.L.planName) || "Free") + ".";
+    if(S.L && S.L.voiceCharsPerMonth){
+      s += " Premium voice used this month: " + (S.L.voiceCharsUsed || 0) +
+           " of " + S.L.voiceCharsPerMonth + " characters.";
+    }
+    if(S.L && S.L.expiresAt) s += " Pass ends " + new Date(S.L.expiresAt).toLocaleDateString() + ".";
+    note.textContent = s;
+  } else if(S.licenceSource === "cached"){
+    note.textContent = "No signal, so using the last plan the service reported.";
+  } else {
+    note.textContent = "That service address did not answer. Check it and try again.";
+  }
 }
 
 /* ================= library ================= */
@@ -1311,6 +1402,99 @@ function pauseAfter(s){
   return 340;
 }
 
+function afterSentence(i){
+  if(!S.playing) return;
+  const s = S.doc.sentences[i];
+  S.timer = setTimeout(() => {
+    if(!S.playing) return;
+    const next = nextIndex(i);
+    if(next === -2){ S.playing = false; paintPlay(); return; }
+    speakAt(next);
+  }, pauseAfter(s));
+}
+
+/* ================= premium voice =================
+   Rendered by the ReadBack service when one is connected, so no key ever
+   ships to the phone. Falls back to the user's own key if they have one. */
+const premiumOn = () => S.settings.engine === "eleven" &&
+  (serviceOn() || !!(S.settings.elKey && S.settings.elKey.trim()));
+
+const voiceCache = new Map();
+const cacheKey = (text) => [...text].length + "|" + (S.settings.elVoice || "default") + "|" + text.slice(0, 40);
+
+function stopAudio(){
+  S.gen++;                       // invalidates any render still in flight
+  if(S.audio){ try { S.audio.pause(); } catch(e){} }
+}
+
+async function fetchVoice(text){
+  const k = cacheKey(text);
+  if(voiceCache.has(k)) return voiceCache.get(k);
+
+  let blob;
+  if(serviceOn()){
+    const r = await fetch(apiUrl("/api/tts"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceId: deviceId(), text,
+        voiceId: S.settings.elVoice || "21m00Tcm4TlvDq8ikWAM"
+      })
+    });
+    if(!r.ok){
+      let msg = "Voice service said " + r.status;
+      try {
+        const j = await r.json();
+        if(j && j.error) msg = j.error;
+        if(j && j.used != null && j.limit != null) msg += " (" + j.used + " of " + j.limit + " characters used)";
+      } catch(e){}
+      const err = new Error(msg);
+      err.status = r.status;
+      throw err;
+    }
+    const left = r.headers.get("X-Voice-Chars-Left");
+    if(left != null){ S.voiceCharsLeft = Number(left); paintPlan(); }
+    blob = await r.blob();
+  } else {
+    const key = (S.settings.elKey || "").trim();
+    if(!key) throw new Error("Connect the ReadBack service in Setup, or paste your own voice key.");
+    const r = await fetch(
+      "https://api.elevenlabs.io/v1/text-to-speech/" +
+        encodeURIComponent(S.settings.elVoice || "21m00Tcm4TlvDq8ikWAM") + "?output_format=mp3_44100_128",
+      {
+        method: "POST",
+        headers: { "xi-api-key": key, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text, model_id: "eleven_turbo_v2_5",
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+        })
+      }
+    );
+    if(!r.ok){
+      let msg = "Voice service said " + r.status;
+      try { const j = await r.json(); if(j && j.detail && j.detail.message) msg = j.detail.message; } catch(e){}
+      const err = new Error(msg);
+      err.status = r.status;
+      throw err;
+    }
+    blob = await r.blob();
+  }
+
+  if(voiceCache.size > 40) voiceCache.delete(voiceCache.keys().next().value);
+  voiceCache.set(k, blob);
+  return blob;
+}
+
+/* Rendering costs money per character and takes a moment, so the next
+   sentence is fetched while the current one plays. */
+function prefetch(i){
+  if(!premiumOn() || !S.doc) return;
+  if(i < 0 || i >= S.doc.sentences.length) return;
+  const text = S.doc.sentences[i].t;
+  if(voiceCache.has(cacheKey(text))) return;
+  fetchVoice(text).catch(() => {});
+}
+
 function speakAt(i){
   if(!S.doc) return;
   const d = S.doc;
@@ -1326,8 +1510,12 @@ function speakAt(i){
   } catch(err){
     console.error("reader paint failed:", err && err.message);
   }
+  if(premiumOn()) speakPremium(i);
+  else speakBrowser(i);
+}
 
-  const s = d.sentences[i];
+function speakBrowser(i){
+  const s = S.doc.sentences[i];
   const u = new SpeechSynthesisUtterance(s.t);
   if(S.voice) u.voice = S.voice;
   u.rate = Number(S.settings.rate) || 1;
@@ -1335,15 +1523,7 @@ function speakAt(i){
   u.volume = 1;
   u.lang = (S.voice && S.voice.lang) || "en-US";
 
-  u.onend = () => {
-    if(!S.playing) return;
-    S.timer = setTimeout(() => {
-      if(!S.playing) return;
-      const next = nextIndex(i);
-      if(next === -2){ S.playing = false; paintPlay(); return; }
-      speakAt(next);
-    }, pauseAfter(s));
-  };
+  u.onend = () => afterSentence(i);
   u.onerror = (ev) => {
     const e = ev && ev.error ? ev.error : "";
     if(e === "interrupted" || e === "canceled") return;
@@ -1356,6 +1536,33 @@ function speakAt(i){
     S.timer = setTimeout(() => speakAt(nextIndex(i)), 250);
   };
   try { synth.speak(u); } catch(e){ toast("Speech failed on this device."); }
+}
+
+async function speakPremium(i){
+  const s = S.doc.sentences[i];
+  const my = ++S.gen;
+  try {
+    const blob = await fetchVoice(s.t);
+    if(my !== S.gen || !S.playing) return;
+    if(S.audio){ try { S.audio.pause(); } catch(e){} }
+    if(S.audioUrl) URL.revokeObjectURL(S.audioUrl);
+    S.audioUrl = URL.createObjectURL(blob);
+    S.audio = new Audio(S.audioUrl);
+    S.audio.playbackRate = Number(S.settings.rate) || 1;
+    S.audio.onended = () => { if(my === S.gen && S.playing) afterSentence(i); };
+    S.audio.onerror = () => { if(my === S.gen && S.playing) afterSentence(i); };
+    await S.audio.play();
+    prefetch(i + 1);
+  } catch(err){
+    if(my !== S.gen) return;
+    S.playing = false;
+    paintPlay();
+    if(err && err.status === 402){
+      showUpgrade("The premium voice is a paid feature", err.message);
+    } else {
+      toast(err && err.message ? err.message : "Premium voice failed.", 4200);
+    }
+  }
 }
 
 function nextIndex(i){
@@ -1389,6 +1596,7 @@ function pause(){
   paintPlay();
   mediaState();
   clearTimeout(S.timer);
+  stopAudio();
   try { synth.cancel(); } catch(e){}
   tickUsage();
   if(S.doc) DB.put(Object.assign({}, S.doc, { pos: S.cur >= 0 ? S.cur : S.doc.pos, updated: S.doc.updated }));
@@ -1419,6 +1627,7 @@ function finishDoc(){
 }
 function seek(i){
   clearTimeout(S.timer);
+  stopAudio();
   const was = S.playing;
   try { synth.cancel(); } catch(e){}
   S.cur = i;
@@ -1498,14 +1707,14 @@ function closeSheets(){
 
 /* ================= upgrade ================= */
 const PLANS = [
-  { name: "Pro", price: "$7.99", per: "per month", best: true,
-    items: ["Unlimited documents", "Unlimited listening", "Premium voice support",
+  { id: "pro", name: "Pro", price: "$7.99", per: "per month", best: true,
+    items: ["Unlimited documents", "Unlimited listening", "Premium voice, 150k characters a month",
             "Interview pause mode", "Offline library", "Saved positions across devices"],
-    no: ["Premium voice minutes billed separately"] },
-  { name: "Interview Sprint", price: "$19", per: "one time, 30 days", best: false,
+    no: [] },
+  { id: "sprint", name: "Interview Sprint", price: "$19", per: "one time, 30 days", best: false,
     items: ["Everything in Pro for 30 days", "Built for a single interview loop",
-            "Best value if you have one round coming up"], no: [] },
-  { name: "Free", price: "$0", per: "forever", best: false,
+            "Premium voice, 60k characters", "Does not renew"], no: [] },
+  { id: "free", name: "Free", price: "$0", per: "forever", best: false,
     items: ["1 document in your library", "10 minutes of listening", "Device voices",
             "Driving mode, sections, repeat"], no: ["Premium studio voices", "Unlimited documents"] }
 ];
@@ -1525,11 +1734,24 @@ function paintUpgrade(){
       '<button class="btn ' + (p.best ? 'primary' : 'ghost') + ' wide">' +
       (p.name === "Free" ? "Current plan" : "Choose " + p.name) + '</button>';
     const btn = el.querySelector("button");
-    if(p.name === "Free") btn.disabled = true;
-    else btn.onclick = () => demoPurchase(p.name);
+    btn.dataset.plan = p.id;
+    if(p.id === "free") btn.disabled = true;
+    else btn.onclick = () => purchase(p.id);
     list.appendChild(el);
   }
   const box = $("#usageBox");
+  if(serviceOn() && S.L){
+    let h = '<div class="u1"><span>Plan</span><b>' + esc(S.L.planName || "Free") + '</b></div>';
+    if(S.L.voiceCharsPerMonth){
+      const used = S.L.voiceCharsUsed || 0;
+      h += '<div class="u1"><span>Premium voice this month</span><b>' + used + ' / ' + S.L.voiceCharsPerMonth + '</b></div>' +
+           '<div class="bar"><i style="width:' + Math.min(100, Math.round(used / S.L.voiceCharsPerMonth * 100)) + '%"></i></div>';
+    }
+    if(S.L.expiresAt) h += '<div class="u1" style="margin-top:9px"><span>Pass ends</span><b>' + new Date(S.L.expiresAt).toLocaleDateString() + '</b></div>';
+    if(S.licenceSource !== "server") h += '<div class="u1" style="margin-top:9px"><span></span><b>offline, last known</b></div>';
+    box.innerHTML = h;
+    return;
+  }
   const used = minutesUsed();
   const pct = Math.min(100, Math.round((used / FREE_LIMITS.minutes) * 100));
   box.innerHTML = '<div class="u1"><span>Listening used this month</span><b>' +
@@ -1544,14 +1766,34 @@ function showUpgrade(title, sub){
   paintUpgrade();
   openSheet("#sheetUpgrade");
 }
-function demoPurchase(name){
-  // placeholder until a payment provider is connected
-  S.pro = true;
-  save("rb_pro", true);
-  paintPlan();
-  paintUsage();
-  toast(name + " unlocked on this device.");
-  closeSheets();
+/* Buying. With a service connected this is a real Stripe Checkout redirect.
+   Without one it unlocks locally so the product can still be walked through,
+   and says so plainly rather than pretending a payment happened. */
+async function purchase(planId){
+  if(!serviceOn()){
+    S.pro = true;
+    save("rb_pro", true);
+    paintPlan();
+    paintUsage();
+    toast("Unlocked on this device only. Connect the service to take real payments.", 4600);
+    closeSheets();
+    return;
+  }
+  toast("Opening checkout...", 6000);
+  try {
+    const r = await fetch(apiUrl("/api/checkout"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId: deviceId(), planId })
+    });
+    const j = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(j.error || ("Checkout failed (" + r.status + ")"));
+    if(!j.url) throw new Error("No checkout link came back.");
+    toast("Redirecting to checkout...", 8000);
+    location.href = j.url;
+  } catch(e){
+    toast(e && e.message ? e.message : "Checkout failed.", 5200);
+  }
 }
 
 /* ================= wiring ================= */
@@ -1646,10 +1888,45 @@ function init(){
   $("#settingsBtn").onclick = () => {
     $("#voiceSel").value = S.settings.voiceURI;
     $("#thinkSec").value = String(S.settings.thinkMs);
+    $("#engineSel").value = S.settings.engine || "browser";
+    $("#apiBase").value = S.settings.apiBase || "";
     $("#elKey").value = S.settings.elKey || "";
     $("#elVoice").value = S.settings.elVoice || "";
     paintDrive();
+    paintPlan();
     openSheet("#sheetSettings");
+  };
+  $("#engineSel").onchange = (e) => {
+    S.settings.engine = e.target.value;
+    save("rb_settings", S.settings);
+    if(S.settings.engine === "eleven" && !serviceOn() && !(S.settings.elKey || "").trim()){
+      toast("Add a service URL or your own voice key below.", 4400);
+    }
+  };
+  $("#apiBase").onchange = async (e) => {
+    S.settings.apiBase = e.target.value.trim().replace(/\/+$/, "");
+    save("rb_settings", S.settings);
+    await refreshLicence();
+    paintPlan();
+    paintUsage();
+    toast(serviceOn()
+      ? (S.licenceSource === "server"
+          ? "Connected. Plan: " + ((S.L && S.L.planName) || "Free") + "."
+          : "Could not reach that service address.")
+      : "Service disconnected. Device voices only.");
+  };
+  $("#elVoice").onchange = (e) => {
+    S.settings.elVoice = e.target.value.trim();
+    save("rb_settings", S.settings);
+    voiceCache.clear();
+  };
+  $("#elKey").onchange = (e) => {
+    S.settings.elKey = e.target.value.trim();
+    save("rb_settings", S.settings);
+    voiceCache.clear();
+    $("#elNote").textContent = S.settings.elKey
+      ? "Key saved in this browser only, and billed to your own account."
+      : "No key saved. Device voices are used unless the service is connected.";
   };
   $("#voiceSel").onchange = (e) => {
     const key = e.target.value;
@@ -1670,14 +1947,6 @@ function init(){
     S.settings.keepAwake ? requestWake() : releaseWake();
   };
   $("#swText").onclick = () => { S.settings.showText = !S.settings.showText; save("rb_settings", S.settings); paintDrive(); };
-  $("#saveEl").onclick = () => {
-    S.settings.elKey = $("#elKey").value.trim();
-    S.settings.elVoice = $("#elVoice").value.trim();
-    save("rb_settings", S.settings);
-    $("#elNote").innerHTML = S.settings.elKey
-      ? "Key saved in this browser only. Premium voice rendering runs through the ElevenLabs API, so each document you listen to with it is billed to that key."
-      : "No key saved. Device voices are used.";
-  };
 
   // outline
   $("#outlineBtn").onclick = () => {
@@ -1732,14 +2001,37 @@ const SAMPLE = "# Interview pack: Senior Product Manager, fintech\n\n" +
 "Ask this last. Their answer tells you whether the role is set up to succeed or set up to fail.";
 
 /* ---------- boot ---------- */
-window.addEventListener("load", () => {
+window.addEventListener("load", async () => {
   init();
   // expose a small handle for automated checks
   window.__rb = {
     extract: (file) => extract(file),
     buildDoc, splitSentences, fromPlain, classify,
-    state: S, DB
+    state: S, DB,
+    deviceId, apiUrl, serviceOn, refreshLicence, fetchVoice, purchase
   };
+
+  await refreshLicence();
+  paintPlan();
+  paintUsage();
+
+  // back from Stripe. The webhook can land a moment after the redirect, so ask
+  // again a couple of times before telling the user anything.
+  const params = new URLSearchParams(location.search);
+  if(params.get("paid") === "1"){
+    toast("Checking your payment...", 3000);
+    for(const wait of [0, 3000, 8000]){
+      if(wait) await new Promise((r) => setTimeout(r, wait));
+      await refreshLicence();
+      paintPlan();
+      paintUsage();
+      if(isPro()) break;
+    }
+    toast(isPro()
+      ? "You are on " + ((S.L && S.L.planName) || "a paid plan") + "."
+      : "Payment is not confirmed yet. It usually lands within a minute.", 5200);
+    history.replaceState(null, "", location.pathname);
+  }
 });
 
 if("serviceWorker" in navigator){

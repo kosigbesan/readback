@@ -3,3 +3,8 @@ test/shots/
 __pycache__/
 *.pyc
 .DS_Store
+
+# local service state and secrets
+server/data/
+server/.env
+.env
