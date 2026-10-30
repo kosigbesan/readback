@@ -12,6 +12,17 @@
 <meta name="apple-mobile-web-app-title" content="ReadBack">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="icon" href="icons/icon-192.png">
+
+<!-- so the link looks intentional when you send it to someone -->
+<meta property="og:title" content="ReadBack">
+<meta property="og:description" content="Drop in a PDF or a Word file and it reads it back to you out loud. Built for interview prep on the drive.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://kosigbesan.github.io/readback/">
+<meta property="og:image" content="https://kosigbesan.github.io/readback/icons/icon-512.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="ReadBack">
+<meta name="twitter:description" content="Drop in a PDF or a Word file and it reads it back to you out loud.">
+<meta name="twitter:image" content="https://kosigbesan.github.io/readback/icons/icon-512.png">
 <style>
 :root{
   --ink:#12100d;
@@ -294,6 +305,19 @@ select:focus,input:focus{outline:none;border-color:rgba(232,163,61,.5)}
         padding:14px;font-size:13px;line-height:1.6;color:#f0c3b6;margin-bottom:16px}
 .note{font-size:11.5px;color:var(--mute);line-height:1.6;margin-top:14px}
 .note b{color:rgba(244,240,231,.8);font-weight:600}
+.btn.sm{padding:9px 14px;font-size:13px;border-radius:9px}
+
+/* the install nudge, shown once to someone who has not added it yet */
+.installcard{
+  border:1px solid rgba(232,163,61,.42);background:rgba(232,163,61,.07);
+  border-radius:12px;padding:15px;margin:0 0 22px;display:none
+}
+.installcard.on{display:block}
+.installcard b{display:block;font-size:14.5px;margin-bottom:5px}
+.installcard .hint{display:block;font-size:12.5px;color:var(--mute);line-height:1.55;margin-bottom:13px}
+.installcard .row{display:flex;gap:9px;flex-wrap:wrap}
+.installcard .steps{margin:0;padding-left:18px;font-size:12.5px;color:rgba(244,240,231,.8);line-height:1.8}
+.installcard .steps li::marker{color:var(--accent)}
 </style>
 </head>
 <body>
@@ -324,6 +348,16 @@ select:focus,input:focus{outline:none;border-color:rgba(232,163,61,.5)}
       </div>
 
       <div class="formats" id="formatChips"></div>
+
+      <div class="installcard" id="installCard">
+        <b id="installTitle">Put ReadBack on your home screen</b>
+        <span class="hint" id="installHint"></span>
+        <ol class="steps" id="installSteps" style="display:none"></ol>
+        <div class="row">
+          <button class="btn primary sm" id="installGo">Install</button>
+          <button class="btn ghost sm" id="installLater">Later</button>
+        </div>
+      </div>
 
       <div id="errSlot"></div>
 
@@ -1757,6 +1791,67 @@ function wireMediaSession(){
   }
 }
 
+/* ================= install: one tap on Android, a nudge on iOS =================
+   Handing this to someone who is not technical means it has to explain itself
+   once. Android can be a single tap. iOS cannot, so it gets the two steps. */
+let installEvent = null;
+const standalone = () =>
+  (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+  window.navigator.standalone === true;
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+function installDismissed(){
+  try { return localStorage.getItem("rb_install_asked") === "1"; } catch(e){ return false; }
+}
+function showInstallCard(){
+  if(standalone() || installDismissed()) return;
+  const card = $("#installCard");
+  if(!card) return;
+  if(installEvent){
+    $("#installTitle").textContent = "Put ReadBack on your home screen";
+    $("#installHint").textContent = "One tap, and it opens like a normal app and works with no signal.";
+    $("#installSteps").style.display = "none";
+    $("#installGo").style.display = "";
+    card.classList.add("on");
+    return;
+  }
+  if(isIOS()){
+    $("#installTitle").textContent = "Add ReadBack to your home screen";
+    $("#installHint").textContent = "Takes a few seconds, and then it works with no signal in the car.";
+    const steps = $("#installSteps");
+    steps.innerHTML = "<li>Tap the Share button at the bottom of Safari</li>" +
+                      "<li>Scroll and tap <b>Add to Home Screen</b></li>" +
+                      "<li>Tap <b>Add</b></li>";
+    steps.style.display = "";
+    $("#installGo").textContent = "Done";
+    $("#installGo").style.display = "";
+    card.classList.add("on");
+    return;
+  }
+  // another browser: the menu route, stated plainly
+  $("#installTitle").textContent = "Add ReadBack to your home screen";
+  $("#installHint").textContent = "Open your browser menu and choose Add to Home screen.";
+  $("#installSteps").style.display = "none";
+  $("#installGo").textContent = "Done";
+  $("#installGo").style.display = "";
+  card.classList.add("on");
+}
+function hideInstallCard(){
+  const card = $("#installCard");
+  if(card) card.classList.remove("on");
+}
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installEvent = e;
+  showInstallCard();
+});
+window.addEventListener("appinstalled", () => {
+  installEvent = null;
+  hideInstallCard();
+  toast("Added to your home screen. It works with no signal now.", 4600);
+});
+
 /* ================= navigation ================= */
 function show(which){
   $("#screenUpload").classList.toggle("hidden", which !== "upload");
@@ -1872,7 +1967,31 @@ function init(){
   wireMediaSession();
   refreshLibrary();
 
-  $("#planPill").onclick = () => { showUpgrade("Plans", "Pick what fits your search."); };
+  $("#planPill").onclick = () => { if(selling()) showUpgrade("Plans", "Pick what fits your search."); };
+
+  // install
+  $("#installGo").onclick = async () => {
+    if(installEvent){
+      try {
+        installEvent.prompt();
+        const choice = await installEvent.userChoice;
+        installEvent = null;
+        hideInstallCard();
+        if(choice && choice.outcome === "accepted") return;
+      } catch(e){}
+      try { localStorage.setItem("rb_install_asked", "1"); } catch(e){}
+      hideInstallCard();
+      return;
+    }
+    try { localStorage.setItem("rb_install_asked", "1"); } catch(e){}
+    hideInstallCard();
+    toast("Anytime you want it back, the same steps are in your browser menu.", 4200);
+  };
+  $("#installLater").onclick = () => {
+    try { localStorage.setItem("rb_install_asked", "1"); } catch(e){}
+    hideInstallCard();
+  };
+  setTimeout(showInstallCard, 1500);
   $("#closeUp").onclick = closeSheets;
   $("#scrim").onclick = closeSheets;
 
@@ -2094,6 +2213,14 @@ window.addEventListener("load", async () => {
       paintDrive();
       paintPlan();
       paintUsage();
+    },
+    // The install wording depends on a browser capability (beforeinstallprompt)
+    // that a headless Chrome cannot be made to lack, so the tests clear it here
+    // to check the iPhone wording faithfully.
+    install: {
+      state: () => ({ hasPrompt: !!installEvent, ios: isIOS(), standalone: standalone() }),
+      clearPrompt(){ installEvent = null; },
+      show: showInstallCard
     }
   };
 
