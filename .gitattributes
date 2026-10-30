@@ -1,0 +1,14 @@
+# keep binaries byte exact, no line ending rewriting
+*.pdf binary
+*.png binary
+*.ico binary
+*.docx binary
+*.pptx binary
+*.epub binary
+*.odt binary
+*.woff binary
+*.woff2 binary
+*.mjs binary
+
+# text files, normalised to LF in the repo
+* text=auto eol=lf
